@@ -1,12 +1,24 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 
 const VOLUME_KEY = 'magma:volume';
+const CUES_KEY = 'magma:cues';
+export type AudioCue = 'begin' | 'return' | 'smallWin' | 'breathe' | 'reset' | 'complete';
+
+const CUES: Record<AudioCue, {frequencies: number[]; spacing: number; duration: number; wave: OscillatorType}> = {
+  begin: {frequencies: [261.63, 392], spacing: 0.1, duration: 0.55, wave: 'triangle'},
+  return: {frequencies: [392], spacing: 0, duration: 0.42, wave: 'sine'},
+  smallWin: {frequencies: [659.25, 880], spacing: 0.08, duration: 0.5, wave: 'sine'},
+  breathe: {frequencies: [220, 146.83], spacing: 0.35, duration: 1.25, wave: 'sine'},
+  reset: {frequencies: [329.63, 220], spacing: 0.1, duration: 0.55, wave: 'triangle'},
+  complete: {frequencies: [523.25, 659.25, 783.99], spacing: 0.12, duration: 0.92, wave: 'sine'},
+};
 
 export const useAmbientAudio = () => {
   const contextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
   const [enabled, setEnabled] = useState(false);
+  const [cuesEnabled, setCuesEnabledState] = useState(() => localStorage.getItem(CUES_KEY) === 'true');
   const [volume, setVolumeState] = useState(() => Math.min(1, Math.max(0, Number(localStorage.getItem(VOLUME_KEY)) || 0.24)));
 
   const ensureGraph = useCallback(async () => {
@@ -68,28 +80,49 @@ export const useAmbientAudio = () => {
     if (enabled) rampTo(safe);
   }, [enabled, rampTo]);
 
-  const playChime = useCallback(async () => {
-    if (!enabled) return;
-    const context = await ensureGraph();
+  const playCue = useCallback(async (cue: AudioCue, preview = false) => {
+    if (!cuesEnabled && !preview) return;
+    let context: AudioContext;
+    try {
+      context = await ensureGraph();
+    } catch {
+      return;
+    }
     const start = context.currentTime;
-    [523.25, 659.25, 783.99].forEach((frequency, index) => {
+    const treatment = CUES[cue];
+    treatment.frequencies.forEach((frequency, index) => {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
-      oscillator.type = 'sine';
+      oscillator.type = treatment.wave;
       oscillator.frequency.value = frequency;
-      gain.gain.setValueAtTime(0, start + index * 0.12);
-      gain.gain.linearRampToValueAtTime(0.075, start + index * 0.12 + 0.025);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + index * 0.12 + 0.9);
+      const cueStart = start + index * treatment.spacing;
+      gain.gain.setValueAtTime(0, cueStart);
+      gain.gain.linearRampToValueAtTime(cue === 'breathe' ? 0.035 : 0.065, cueStart + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, cueStart + treatment.duration);
       oscillator.connect(gain).connect(context.destination);
-      oscillator.start(start + index * 0.12);
-      oscillator.stop(start + index * 0.12 + 0.92);
+      oscillator.start(cueStart);
+      oscillator.stop(cueStart + treatment.duration + 0.02);
     });
-  }, [enabled, ensureGraph]);
+  }, [cuesEnabled, ensureGraph]);
+
+  const setCuesEnabled = useCallback((next: boolean) => {
+    setCuesEnabledState(next);
+    localStorage.setItem(CUES_KEY, String(next));
+    if (next) void ensureGraph();
+  }, [ensureGraph]);
+
+  const silence = useCallback(() => {
+    rampTo(0);
+    setEnabled(false);
+    setCuesEnabled(false);
+  }, [rampTo, setCuesEnabled]);
+
+  const playChime = useCallback(() => playCue('complete'), [playCue]);
 
   useEffect(() => () => {
     sourceRef.current?.stop();
     contextRef.current?.close();
   }, []);
 
-  return {enabled, volume, toggle, setVolume, playChime};
+  return {enabled, volume, cuesEnabled, toggle, setVolume, setCuesEnabled, playCue, playChime, silence};
 };

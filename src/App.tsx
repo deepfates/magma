@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
 import {
-  Bell, BellOff, Check, Circle, Copy, Crown, Eye, EyeOff, Flame, Link2, Pause, Pin, Play, Plus,
-  Radio, RotateCcw, Settings, Sparkles, StickyNote, Trash2, Users, Volume2, VolumeX, X, Youtube,
+  Bell, BellOff, Check, Circle, Copy, Crown, Flame, Link2, Pause, Pin, Play, Plus,
+  RotateCcw, Settings, Sparkles, StickyNote, Trash2, Users, Volume2, VolumeX, X,
 } from 'lucide-react';
 import {useTable} from 'tinybase/ui-react';
 import {LavaShader} from './LavaShader';
@@ -13,6 +13,9 @@ import {useFocusAssist} from './useFocusAssist';
 import {useRoom} from './useRoom';
 import {useYouTubeBackdrop} from './useYouTubeBackdrop';
 import {YouTubeBackdrop} from './YouTubeBackdrop';
+import {EnvironmentLab} from './EnvironmentLab';
+import {BlockAim} from './BlockAim';
+import {useBlockRitual} from './useBlockRitual';
 
 const MODES: {id: TimerMode; label: string}[] = [
   {id: 'focus', label: 'Focus'},
@@ -148,7 +151,7 @@ function Workspace({profile, participants}: {profile: Profile; participants: Par
   );
 }
 
-function CompletionRitual({artifact, onClose}: {artifact: SessionArtifact; onClose: () => void}) {
+function CompletionRitual({artifact, onClose, decision, onDecide}: {artifact: SessionArtifact; onClose: () => void; decision?: 'counted' | 'released'; onDecide: (decision: 'counted' | 'released') => void}) {
   const minutes = Math.round(artifact.durationMs / 60_000);
   return (
     <section className="completion-ritual glass" aria-live="polite">
@@ -158,23 +161,7 @@ function CompletionRitual({artifact, onClose}: {artifact: SessionArtifact; onClo
       <h2>{minutes} {minutes === 1 ? 'minute' : 'minutes'} held together.</h2>
       <p>{artifact.participants.length ? artifact.participants.map((person) => `${person.emoji} ${person.name}`).join(' · ') : 'The room kept the flame.'}</p>
       <small>{artifact.reactionCount} reactions · focus #{artifact.focusCount}</small>
-    </section>
-  );
-}
-
-function BackdropControls({backdrop}: {backdrop: ReturnType<typeof useYouTubeBackdrop>}) {
-  const [draft, setDraft] = useState('');
-  const apply = () => {
-    if (backdrop.useInput(draft)) setDraft('');
-  };
-  return (
-    <section className="glass backdrop-card">
-      <div className="card-title"><span><Youtube size={17} /> Moving backdrop</span><button className="icon-button" onClick={() => backdrop.setEnabled(!backdrop.enabled)} aria-label={backdrop.enabled ? 'Hide YouTube backdrop' : 'Show YouTube backdrop'}>{backdrop.enabled ? <Eye size={15} /> : <EyeOff size={15} />}</button></div>
-      <button className="live-preset" onClick={backdrop.useDefault}><Radio size={13} /> ABC7 Bay Area live</button>
-      <div className="backdrop-source"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && apply()} placeholder="YouTube video or playlist URL" aria-label="YouTube video or playlist URL" /><button onClick={apply}>Load</button></div>
-      {backdrop.error && <small className="backdrop-error" role="alert">{backdrop.error}</small>}
-      <div className="backdrop-tuning"><label>Blend <input type="range" min="15" max="85" value={Math.round(backdrop.opacity * 100)} onChange={(event) => backdrop.setOpacity(Number(event.target.value) / 100)} aria-label="Backdrop visibility" /></label><button onClick={() => backdrop.setMuted(!backdrop.muted)}>{backdrop.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}{backdrop.muted ? 'Muted' : 'Sound on'}</button></div>
-      <small className="backdrop-now">{backdrop.enabled ? backdrop.source.label : 'Backdrop hidden'} · only for you</small>
+      {artifact.mode === 'focus' && <div className="block-verdict">{decision ? <p>{decision === 'counted' ? '◆ Counted in today’s stack.' : 'Released. The work still happened.'}</p> : <><strong>Was it one clean, finish-directed Block?</strong><div><button onClick={() => onDecide('counted')}>Count this Block</button><button onClick={() => onDecide('released')}>It didn’t count</button></div></>}</div>}
     </section>
   );
 }
@@ -185,6 +172,7 @@ function App() {
   const milliseconds = useClock(session.remaining);
   const audio = useAmbientAudio();
   const backdrop = useYouTubeBackdrop();
+  const ritual = useBlockRitual();
   const assist = useFocusAssist(session.timer.status === 'running', session.completion, audio.playChime);
   const [copied, setCopied] = useState(false);
   const [roomDraft, setRoomDraft] = useState(room);
@@ -216,9 +204,8 @@ function App() {
   const actionLabel = session.timer.status === 'running' ? 'Pause' : session.timer.status === 'paused' ? 'Resume' : 'Start';
 
   return (
-    <main className={backdrop.enabled ? 'video-active' : ''}>
-      <YouTubeBackdrop enabled={backdrop.enabled} embedUrl={backdrop.embedUrl} opacity={backdrop.opacity} title={backdrop.source.label} />
-      <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />
+    <main className={`${backdrop.enabled ? 'video-active' : ''} ${backdrop.reducedSensory ? 'reduced-sensory' : ''}`} style={{'--lava-opacity': backdrop.lavaMix} as React.CSSProperties}>
+      {!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />}
       <div className="grain" aria-hidden="true" />
       <header>
         <a className="brand" href="/" aria-label="Magma home"><span className="brand-mark"><Flame size={19} fill="currentColor" /></span><strong>magma</strong><i>focus together</i></a>
@@ -232,22 +219,26 @@ function App() {
           <div className="reactions glass" aria-label="Send a reaction">{[['🔥','fire'], ['✨','sparkles'], ['🫡','salute'], ['💧','water']].map(([emoji, name]) => <button aria-label={`Send ${name} reaction`} key={emoji} onClick={() => session.react(emoji)}>{emoji}</button>)}</div>
         </aside>
 
-        <section className="timer-stage">
-          {(session.completion || reviewArtifact) && <CompletionRitual artifact={(session.completion || reviewArtifact)!} onClose={() => { session.dismissCompletion(); setReviewArtifact(null); }} />}
+        <div className="center-column">
+          <YouTubeBackdrop enabled={backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} />
+          <section className="timer-stage">
+          {(session.completion || reviewArtifact) && <CompletionRitual artifact={(session.completion || reviewArtifact)!} decision={ritual.decisions[(session.completion || reviewArtifact)!.id]} onDecide={(decision) => { const artifact = (session.completion || reviewArtifact)!; ritual.decide(artifact.id, decision); if (session.completion?.id === artifact.id) ritual.clearAim(); void audio.playCue(decision === 'counted' ? 'smallWin' : 'reset'); }} onClose={() => { if (session.completion?.mode === 'focus') ritual.clearAim(); session.dismissCompletion(); setReviewArtifact(null); }} />}
           <p className="eyebrow"><Sparkles size={14} /> {session.timer.status === 'running' ? 'the room is in flow' : session.isHost ? 'you hold the room tempo' : `${session.participants.find((person) => person.memberId === session.hostId)?.name ?? 'the host'} holds the tempo`}</p>
           {session.proposal && <div className="proposal glass"><span><Crown size={14} /> {session.proposal.fromName} asks to {session.proposal.command.type === 'mode' ? `switch to ${session.proposal.command.mode}` : session.proposal.command.type}</span>{session.isHost ? <div><button onClick={() => session.approve(session.proposal!.id)}>Allow</button><button onClick={() => session.dismiss(session.proposal!.id)}>Not now</button></div> : <small>Waiting for the host</small>}</div>}
           <div className="mode-switcher glass">{MODES.map((mode) => <button aria-pressed={session.timer.mode === mode.id} className={session.timer.mode === mode.id ? 'active' : ''} key={mode.id} onClick={() => session.command({type: 'mode', mode: mode.id})}>{mode.label}</button>)}</div>
+          {session.connected && session.participants.length > 0 && session.timer.mode === 'focus' && session.timer.status !== 'running' && <BlockAim ritual={ritual} sessionId={session.timer.sessionId} />}
           <div className="timer-wrap"><div className="orbit" style={{'--progress': `${Math.max(0, Math.min(1, progress)) * 360}deg`} as React.CSSProperties} /><div className="timer" role="timer" aria-live="off">{formatRemaining(milliseconds)}</div></div>
           <p className="focus-copy">One shared clock. Your own way through it.</p>
           <div className="timer-actions"><button className="primary" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})}>{session.timer.status === 'running' ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}{session.isHost ? `${actionLabel} together` : `Ask to ${actionLabel.toLowerCase()}`}</button><button className="round-button" onClick={() => session.command({type: 'reset'})} aria-label={session.isHost ? 'Reset timer' : 'Ask host to reset timer'}><RotateCcw size={18} /></button><button className="round-button" onClick={() => setShowSettings((value) => !value)} aria-label="Timer settings"><Settings size={18} /></button></div>
           <div className="session-dots" role="img" aria-label={`${session.timer.focusCount % 4} of four focus sessions complete`}>{[0,1,2,3].map((index) => <span className={index < session.timer.focusCount % 4 ? 'complete' : index === session.timer.focusCount % 4 ? 'active' : ''} key={index} />)}</div>
           {showSettings && <div className="timer-settings glass"><label>Focus <input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.focus / 60_000} id="focus-duration" /> min</label><label>Short <input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.shortBreak / 60_000} id="short-duration" /> min</label><label>Long <input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.longBreak / 60_000} id="long-duration" /> min</label><label className="auto-setting"><input type="checkbox" defaultChecked={session.timer.autoAdvance} id="auto-advance" /> Auto-start breaks</label><button disabled={!session.isHost} onClick={() => { const get = (id: string) => Number((document.getElementById(id) as HTMLInputElement).value) * 60_000; session.updateSettings({focus: get('focus-duration'), shortBreak: get('short-duration'), longBreak: get('long-duration')}, (document.getElementById('auto-advance') as HTMLInputElement).checked); }}>{session.isHost ? 'Set room cadence' : 'Host controls cadence'}</button></div>}
           {session.artifacts[0] && !session.completion && !reviewArtifact && <button className="last-ember" onClick={() => setReviewArtifact(session.artifacts[0])}><Flame size={13} fill="currentColor" /> Last ember · {Math.round(session.artifacts[0].durationMs / 60_000)}m · {session.artifacts[0].participants.length} together</button>}
-        </section>
+          </section>
+        </div>
 
         <aside className="right-rail" aria-label="Shared workspace and personal ambience">
           <Workspace profile={session.profile} participants={session.participants} />
-          <BackdropControls backdrop={backdrop} />
+          <EnvironmentLab backdrop={backdrop} audio={audio} running={session.timer.status === 'running'} />
           <section className="glass sound-card"><div className="card-title"><span><Volume2 size={17} /> Local ambience</span><button className="icon-button" onClick={audio.toggle} aria-label={audio.enabled ? 'Mute warm noise' : 'Play warm noise'}>{audio.enabled ? <Volume2 size={15} /> : <VolumeX size={15} />}</button></div><div className="sound-row"><span>〰️</span><div><strong>Warm noise</strong><small>{audio.enabled ? `${Math.round(audio.volume * 100)}% · only for you` : 'Tap sound to begin'}</small></div><input type="range" min="0" max="100" value={Math.round(audio.volume * 100)} onChange={(event) => audio.setVolume(Number(event.target.value) / 100)} disabled={!audio.enabled} aria-label="Warm noise volume" /></div><button className="notification-toggle" onClick={assist.requestNotifications}>{assist.notifications ? <Bell size={13} /> : <BellOff size={13} />}{assist.notifications ? 'Completion alerts on' : 'Enable completion alerts'}</button></section>
         </aside>
       </div>

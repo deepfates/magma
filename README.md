@@ -14,8 +14,29 @@ Magma is a multiplayer focus ritual with a full-screen lava shader, a server-aut
 - People have stable local profiles and intentions. Tasks support ownership, while CRDT note cards (“sparks”) let the room communicate without breaking focus.
 - Tasks and sparks live in a TinyBase `MergeableStore`, persist to IndexedDB, and synchronize through the same room. Server-side schemas, message caps, and rate limits constrain writes.
 - Warm noise is synthesized locally with Web Audio. Wake Lock and opt-in completion notifications are progressive enhancements; no audio assets or tracking services are bundled.
-- A personal moving backdrop defaults to ABC7 Bay Area’s live YouTube feed and accepts standard YouTube video or playlist links. It starts muted, supports blend control, remembers the local choice, and uses YouTube’s privacy-enhanced player for pasted media.
+- A personal “living window” offers the Treasure Island panorama from Mersea/Teleport, ABC7’s Treasure Island camera, TrazCam, NASA’s ISS feed, and standard YouTube video or playlist links. Loading is deliberate, starts muted, remembers the local choice, and keeps the privacy-enhanced player’s controls visible and unobscured.
+- The local Environment Lab is a reversible scene recipe: living-window choice, restrained lava level, synthesized warm noise, an opt-in cue deck, and a one-action quiet mode. Its advanced authoring surface lazy-loads Tweakpane; personal sensory choices never enter the shared CRDT.
+- Before a focus Block, a person can name one visible finish line and expand a disposable three-item “Right Now” list. Afterward they decide whether the interval was clean and finish-directed; the daily tally counts that decision exactly once, resets each day, and never becomes a streak or leaderboard.
 - The WebGL lava responds to phase, presence, and completion energy, pauses when hidden, and respects reduced motion.
+
+## Productivity grammar
+
+Magma intentionally has less productivity machinery than its atmosphere might suggest. Its ritual combines the Block Method in *How to Do Things v1.0* with Bullet Journal’s rapid capture, reflection, and migration:
+
+1. Choose a finish-directed Block and picture what “done” will visibly mean.
+2. If useful, write no more than three immediate physical actions.
+3. Work inside the shared clock; the room supplies presence, not surveillance.
+4. At completion, personally decide whether the Block counted. A compromised Block can be released without pretending the work did not happen.
+5. Keep only a daily tally. Begin again tomorrow without streak debt.
+
+The cue deck follows the same boundary. Signals are authored and previewable, audio is off until chosen, and “quiet everything” is a complete setup. Magma is an instrument a person operates, not an optimizer that operates on the person.
+
+## Reuse boundaries
+
+- TinyBase remains scoped to independently editable shared workspace data; the clock stays server-authoritative.
+- Tweakpane 4 powers only the lazy advanced scene surface. It was selected from the owner’s GitHub stars after checking license, maintenance, and bundle shape; the modal drawer itself stays native HTML/CSS so its keyboard and reduced-motion behavior do not depend on another framework.
+- Web Audio and the YouTube IFrame API remain native integrations. Adding a larger framework for either would increase architecture without increasing the capability.
+- Starred projects such as ENTHEA informed sensory-safety ideas but are not copied into Magma; its AGPL license and different product shape make inspiration the correct reuse boundary.
 
 ## Run two-player locally
 
@@ -30,7 +51,7 @@ Open the same URL (including its `?room=` value) in two browser windows. The web
 npm run check
 ```
 
-This runs timer/state-machine and YouTube URL tests, TypeScript, a production build, and real Chromium multiplayer tests covering authority, CRDT convergence, reconnect durability, host handoff, server-alarm completion, backdrop persistence, phone layout, and automated accessibility checks.
+This runs timer/state-machine and YouTube URL tests, TypeScript, a production build, and real Chromium multiplayer tests covering authority, CRDT convergence, reconnect durability, host handoff, server-alarm completion, one-time Block accounting, deliberate living-window persistence, phone layout, and automated accessibility checks.
 
 ## Put rooms online
 

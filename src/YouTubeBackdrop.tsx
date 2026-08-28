@@ -1,16 +1,16 @@
-export function YouTubeBackdrop({enabled, embedUrl, opacity, title}: {enabled: boolean; embedUrl: string; opacity: number; title: string}) {
+export function YouTubeBackdrop({enabled, embedUrl, title}: {enabled: boolean; embedUrl: string; title: string}) {
   if (!enabled) return null;
   return (
-    <div className="youtube-backdrop" style={{'--video-opacity': opacity} as React.CSSProperties} aria-hidden="true">
+    <section className="living-window glass" aria-label={`${title} living window`}>
+      <div className="living-window-heading"><span>Live window</span><strong>{title}</strong></div>
       <iframe
         key={embedUrl}
         src={embedUrl}
         title={title}
         allow="autoplay; encrypted-media; picture-in-picture"
         referrerPolicy="strict-origin-when-cross-origin"
-        tabIndex={-1}
+        allowFullScreen
       />
-      <div className="video-veil" />
-    </div>
+    </section>
   );
 }

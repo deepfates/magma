@@ -1,9 +1,9 @@
 import {useMemo, useState} from 'react';
-import {ABC7_BAY_AREA, parseYouTubeSource, youtubeEmbedUrl, type YouTubeSource} from './domain/youtube';
+import {parseYouTubeSource, TREASURE_ISLAND, youtubeEmbedUrl, type YouTubeSource} from './domain/youtube';
 
-const STORAGE_KEY = 'magma:youtube-backdrop';
-type Settings = {enabled: boolean; muted: boolean; opacity: number; source: YouTubeSource};
-const defaults: Settings = {enabled: true, muted: true, opacity: 0.5, source: ABC7_BAY_AREA};
+const STORAGE_KEY = 'magma:youtube-backdrop:v2';
+type Settings = {enabled: boolean; muted: boolean; lavaMix: number; reducedSensory: boolean; source: YouTubeSource};
+const defaults: Settings = {enabled: false, muted: true, lavaMix: 0.72, reducedSensory: false, source: TREASURE_ISLAND};
 
 const load = (): Settings => {
   try {
@@ -12,7 +12,8 @@ const load = (): Settings => {
     return {
       enabled: value.enabled ?? defaults.enabled,
       muted: value.muted ?? defaults.muted,
-      opacity: Math.max(0.15, Math.min(0.85, value.opacity ?? defaults.opacity)),
+      lavaMix: Math.max(0, Math.min(1, value.lavaMix ?? defaults.lavaMix)),
+      reducedSensory: value.reducedSensory ?? defaults.reducedSensory,
       source: value.source,
     };
   } catch {
@@ -37,12 +38,12 @@ export const useYouTubeBackdrop = () => {
       return false;
     }
     setError('');
-    setSettings((current) => ({...current, enabled: true, source}));
+    setSettings((current) => ({...current, enabled: true, reducedSensory: false, source}));
     return true;
   };
   const useDefault = () => {
     setError('');
-    setSettings((current) => ({...current, enabled: true, source: ABC7_BAY_AREA}));
+    setSettings((current) => ({...current, enabled: true, reducedSensory: false, source: TREASURE_ISLAND}));
   };
   const embedUrl = useMemo(
     () => youtubeEmbedUrl(settings.source, settings.muted, window.location.origin),
@@ -54,7 +55,12 @@ export const useYouTubeBackdrop = () => {
     embedUrl,
     setEnabled: (enabled: boolean) => setSettings((current) => ({...current, enabled})),
     setMuted: (muted: boolean) => setSettings((current) => ({...current, muted})),
-    setOpacity: (opacity: number) => setSettings((current) => ({...current, opacity})),
+    setLavaMix: (lavaMix: number) => setSettings((current) => ({...current, lavaMix})),
+    setReducedSensory: (reducedSensory: boolean) => setSettings((current) => ({...current, reducedSensory})),
+    useSource: (source: YouTubeSource) => {
+      setError('');
+      setSettings((current) => ({...current, enabled: true, reducedSensory: false, source}));
+    },
     useInput,
     useDefault,
   };

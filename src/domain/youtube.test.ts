@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {ABC7_BAY_AREA, parseYouTubeSource, youtubeEmbedUrl} from './youtube';
+import {parseYouTubeSource, TREASURE_ISLAND, youtubeEmbedUrl} from './youtube';
 
 describe('YouTube backdrop sources', () => {
   it('accepts regular, short, shorts, and embed video URLs', () => {
@@ -21,9 +21,9 @@ describe('YouTube backdrop sources', () => {
     expect(parseYouTubeSource('not a video')).toBeNull();
   });
 
-  it('builds a privacy-enhanced muted ABC7 live embed', () => {
-    const url = youtubeEmbedUrl(ABC7_BAY_AREA, true, 'https://magma.test');
-    expect(url).toContain(`youtube-nocookie.com/embed/${ABC7_BAY_AREA.id}`);
+  it('builds a privacy-enhanced muted Treasure Island live embed', () => {
+    const url = youtubeEmbedUrl(TREASURE_ISLAND, true, 'https://magma.test');
+    expect(url).toContain(`youtube-nocookie.com/embed/${TREASURE_ISLAND.id}`);
     expect(url).toContain('mute=1');
   });
 });

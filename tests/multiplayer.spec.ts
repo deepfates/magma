@@ -63,14 +63,30 @@ test('a completed focus becomes one durable ember and starts the break', async (
   await page.getByRole('button', {name: 'Timer settings'}).click();
   await page.getByRole('spinbutton', {name: 'Focus min'}).fill('0.5');
   await page.getByRole('button', {name: 'Set room cadence'}).click();
+  await page.getByRole('textbox', {name: 'Picture the finish line'}).fill('A verified Block');
   await page.getByRole('button', {name: 'Start together'}).click();
 
   await expect(page.getByRole('heading', {name: '1 minute held together.'})).toBeVisible({timeout: 36_000});
   await expect(page.getByRole('button', {name: 'Pause together'})).toBeVisible();
+  await page.getByRole('button', {name: 'Count this Block'}).click();
+  await expect(page.getByText('Counted in today’s stack.')).toBeVisible();
+  const dailyTally = await page.evaluate(() => JSON.parse(localStorage.getItem('magma:block-ritual') ?? '{}').tally);
+  expect(dailyTally).toBe(1);
+  const finishLine = await page.evaluate(() => JSON.parse(localStorage.getItem('magma:block-ritual') ?? '{}').finishLine);
+  expect(finishLine).toBe('');
   await page.getByRole('button', {name: 'Close session ember'}).click();
   await expect(page.getByRole('button', {name: /Last ember/})).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', {name: /Last ember/})).toHaveCount(1);
+  await page.evaluate(() => {
+    const ritual = JSON.parse(localStorage.getItem('magma:block-ritual') ?? '{}');
+    localStorage.setItem('magma:block-ritual', JSON.stringify({...ritual, date: '2000-01-01', tally: 99}));
+  });
+  await page.reload();
+  await page.getByRole('button', {name: /Last ember/}).click();
+  await expect(page.getByRole('button', {name: 'Count this Block'})).toHaveCount(0);
+  await expect(page.getByText('Counted in today’s stack.')).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('magma:block-ritual') ?? '{}').tally)).toBe(0);
 });
 
 test('the core room is accessible and fits a phone viewport', async ({browser}) => {
@@ -80,21 +96,38 @@ test('the core room is accessible and fits a phone viewport', async ({browser}) 
   await expect(page.getByText('you hold the room tempo')).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+  const opener = page.getByRole('button', {name: 'Open Environment Lab'});
+  await opener.click();
+  await expect(page.getByRole('heading', {name: 'Shape the room. Then leave it alone.'})).toBeVisible();
   const results = await new AxeBuilder({page}).analyze();
   expect(results.violations).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', {name: 'Shape the room. Then leave it alone.'})).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe('Open Environment Lab');
   await context.close();
 });
 
-test('a person can load and retain a YouTube playlist backdrop', async ({page}) => {
+test('a person can deliberately open and retain a living YouTube window', async ({page}) => {
   await page.goto(`/?room=backdrop-${crypto.randomUUID()}`);
-  const frame = page.locator('.youtube-backdrop iframe');
-  await expect(frame).toHaveAttribute('src', /_VqvVJfmyfs/);
+  const frame = page.locator('.living-window iframe');
+  await expect(frame).toHaveCount(0);
+  await page.getByRole('button', {name: 'Open Environment Lab'}).click();
+  await expect(page.getByRole('heading', {name: 'Shape the room. Then leave it alone.'})).toBeVisible();
+  await page.getByRole('button', {name: 'Open selected window'}).click();
+  await expect(frame).toHaveAttribute('src', /BSWhGNXxT9A/);
+  await page.getByRole('button', {name: 'Close Environment Lab'}).click();
+  await page.getByRole('button', {name: 'Quiet everything'}).click();
+  await expect(frame).toHaveCount(0);
+  await page.getByRole('button', {name: 'Open Environment Lab'}).click();
+  await page.getByRole('button', {name: 'Open selected window'}).click();
+  await expect(frame).toHaveAttribute('src', /BSWhGNXxT9A/);
   await page.getByLabel('YouTube video or playlist URL').fill('https://www.youtube.com/playlist?list=PL1234567890abc');
   await page.getByRole('button', {name: 'Load'}).click();
   await expect(frame).toHaveAttribute('src', /embed\/videoseries/);
   await expect(frame).toHaveAttribute('src', /list=PL1234567890abc/);
   await page.reload();
   await expect(frame).toHaveAttribute('src', /list=PL1234567890abc/);
-  await page.getByRole('button', {name: 'Hide YouTube backdrop'}).click();
+  await page.getByRole('button', {name: 'Open Environment Lab'}).click();
+  await page.getByRole('button', {name: 'Close live window'}).click();
   await expect(frame).toHaveCount(0);
 });

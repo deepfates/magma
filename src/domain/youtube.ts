@@ -4,11 +4,18 @@ export type YouTubeSource = {
   label: string;
 };
 
-export const ABC7_BAY_AREA: YouTubeSource = {
+export const TREASURE_ISLAND: YouTubeSource = {
   kind: 'video',
-  id: '_VqvVJfmyfs',
-  label: 'ABC7 Bay Area · live',
+  id: 'BSWhGNXxT9A',
+  label: 'Treasure Island panorama · live',
 };
+
+export const SCENE_PRESETS: Array<YouTubeSource & {description: string; accent: string}> = [
+  {...TREASURE_ISLAND, description: 'Skyline, bridges, fog and ferries from Mersea', accent: '#ff9c91'},
+  {kind: 'video', id: '_VqvVJfmyfs', label: 'ABC7 Treasure Island · live', description: 'A steady Bay Bridge and city weather window', accent: '#8da9ff'},
+  {kind: 'video', id: 'E_kvIXtF_yo', label: 'TrazCam Bay Life · live', description: 'A small, calm one-camera Bay project', accent: '#66d8c5'},
+  {kind: 'video', id: 'sWasdbDVNvc', label: 'Earth from the ISS · live', description: 'Official NASA views, with occasional signal loss', accent: '#b997ff'},
+];
 
 const safeId = (value: string, min = 10, max = 90) =>
   value.length >= min && value.length <= max && /^[a-zA-Z0-9_-]+$/.test(value);
