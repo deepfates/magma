@@ -115,16 +115,19 @@ test('the core room is accessible and fits a phone viewport', async ({browser}) 
   await context.close();
 });
 
-test('the living view persists without overlapping the instrument', async ({page}) => {
+test('the living view covers the viewport and offers a complete player mode', async ({page}) => {
   await page.goto(`/?room=backdrop-${crypto.randomUUID()}`);
   const frame = page.locator('.living-window iframe');
   await expect(frame).toHaveAttribute('src', /BSWhGNXxT9A/);
-  const geometry = await page.evaluate(() => {
-    const media = document.querySelector('.media-stage')!.getBoundingClientRect();
-    const rail = document.querySelector('.instrument-rail')!.getBoundingClientRect();
-    return {mediaRight: media.right, railLeft: rail.left, mediaBottom: media.bottom, railTop: rail.top};
-  });
-  expect(geometry.mediaRight <= geometry.railLeft || geometry.mediaBottom <= geometry.railTop).toBe(true);
+  const geometry = await page.evaluate(() => document.querySelector('.media-stage')!.getBoundingClientRect().toJSON());
+  expect(geometry.left).toBe(0);
+  expect(geometry.top).toBe(0);
+  expect(geometry.width).toBe(await page.evaluate(() => innerWidth));
+  expect(geometry.height).toBe(await page.evaluate(() => innerHeight));
+  await page.getByRole('button', {name: 'Camera controls'}).click();
+  await expect(page.getByRole('button', {name: 'Return to instrument'})).toBeVisible();
+  expect(await frame.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe('auto');
+  await page.getByRole('button', {name: 'Return to instrument'}).click();
   await page.getByRole('button', {name: 'Environment'}).click();
   await page.getByRole('button', {name: 'Quiet everything'}).click();
   await expect(frame).toHaveCount(0);

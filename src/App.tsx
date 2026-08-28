@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import {
-  Bell, BellOff, Check, Circle, Copy, Crown, Flame, ListTodo, Pause, Pin, Play, Plus,
+  Bell, BellOff, Check, Circle, Copy, Crown, Flame, ListTodo, Maximize2, Minimize2, Pause, Pin, Play, Plus,
   RotateCcw, Settings, SlidersHorizontal, Sparkles, StickyNote, Timer, Trash2, Users, X,
 } from 'lucide-react';
 import {useTable} from 'tinybase/ui-react';
@@ -180,6 +180,7 @@ function App() {
   const [roomDraft, setRoomDraft] = useState(room);
   const [editingProfile, setEditingProfile] = useState(false);
   const [activeSurface, setActiveSurface] = useState<Surface | null>(null);
+  const [playerMode, setPlayerMode] = useState(false);
   const [pulse, setPulse] = useState(0);
   const [reviewArtifact, setReviewArtifact] = useState<SessionArtifact | null>(null);
   const progress = 1 - milliseconds / session.timer.durationMs;
@@ -218,16 +219,18 @@ function App() {
   ];
 
   return (
-    <main className={`instrument-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''}`}>
+    <main className={`instrument-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''} ${playerMode ? 'player-mode' : ''}`}>
       <section className="media-stage" aria-label="Living view">
         <YouTubeBackdrop enabled={backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} />
         {(!backdrop.enabled || backdrop.reducedSensory) && <div className="quiet-field">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />}<span>{backdrop.reducedSensory ? 'Quiet field' : 'Lava field'}</span></div>}
       </section>
 
+      {playerMode && <button className="player-mode-exit" onClick={() => setPlayerMode(false)}><Minimize2 size={15} /> Return to instrument</button>}
+
       <aside className="instrument-rail" aria-label="Magma focus instrument">
         <header className="instrument-header">
           <a className="brand" href="/" aria-label="Magma home"><Flame size={17} fill="currentColor" /><h1>magma</h1></a>
-          <button className="room-locus" onClick={() => setActiveSurface('room')}><span className={`status-dot ${session.connected ? 'online' : ''}`} /><span>{room}</span><small>{session.participants.length}</small></button>
+          <div className="header-actions"><button className="camera-control" onClick={() => setPlayerMode(true)}><Maximize2 size={13} /> Camera controls</button><button className="room-locus" onClick={() => setActiveSurface('room')}><span className={`status-dot ${session.connected ? 'online' : ''}`} /><span>{room}</span><small>{session.participants.length}</small></button></div>
         </header>
 
         <div className="clock-strip" aria-label="Shared clock summary">
