@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
 import {
-  Bell, BellOff, Check, Circle, Copy, Crown, Flame, Link2, Pause, Pin, Play, Plus,
-  RotateCcw, Settings, Sparkles, StickyNote, Trash2, Users, Volume2, VolumeX, X,
+  Bell, BellOff, Check, Circle, Copy, Crown, Flame, ListTodo, Pause, Pin, Play, Plus,
+  RotateCcw, Settings, SlidersHorizontal, Sparkles, StickyNote, Timer, Trash2, Users, X,
 } from 'lucide-react';
 import {useTable} from 'tinybase/ui-react';
 import {LavaShader} from './LavaShader';
@@ -66,7 +66,7 @@ function People({participants, profile, hostId, isHost, editProfile, transferHos
   editProfile: () => void; transferHost: (memberId: string) => void;
 }) {
   return (
-    <section className="glass people-card">
+    <section className="people-card">
       <div className="card-title"><span><Users size={17} /> In the glow</span><small>{participants.length} {participants.length === 1 ? 'person' : 'people'}</small></div>
       <div className="people">
         {participants.map((person) => (
@@ -141,7 +141,7 @@ function Workspace({profile, participants}: {profile: Profile; participants: Par
   const tasks = useTable('tasks', store);
   const sparks = useTable('sparks', store);
   return (
-    <section className="glass tasks-card">
+    <section className="tasks-card">
       <div className="workspace-tabs" role="tablist" aria-label="Room workspace">
         <button role="tab" aria-selected={tab === 'tasks'} className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}><Check size={15} /> Intentions <small>{Object.keys(tasks).length}</small></button>
         <button role="tab" aria-selected={tab === 'sparks'} className={tab === 'sparks' ? 'active' : ''} onClick={() => setTab('sparks')}><StickyNote size={15} /> Sparks <small>{Object.keys(sparks).length}</small></button>
@@ -154,7 +154,7 @@ function Workspace({profile, participants}: {profile: Profile; participants: Par
 function CompletionRitual({artifact, onClose, decision, onDecide}: {artifact: SessionArtifact; onClose: () => void; decision?: 'counted' | 'released'; onDecide: (decision: 'counted' | 'released') => void}) {
   const minutes = Math.round(artifact.durationMs / 60_000);
   return (
-    <section className="completion-ritual glass" aria-live="polite">
+    <section className="completion-ritual" aria-live="polite">
       <button className="icon-button completion-close" onClick={onClose} aria-label="Close session ember"><X size={16} /></button>
       <div className="ember-mark"><Flame size={28} fill="currentColor" /></div>
       <p className="eyebrow">session ember · {artifact.mode}</p>
@@ -165,6 +165,8 @@ function CompletionRitual({artifact, onClose, decision, onDecide}: {artifact: Se
     </section>
   );
 }
+
+type Surface = 'workspace' | 'environment' | 'tempo' | 'room';
 
 function App() {
   const [room] = useState(roomFromUrl);
@@ -177,13 +179,14 @@ function App() {
   const [copied, setCopied] = useState(false);
   const [roomDraft, setRoomDraft] = useState(room);
   const [editingProfile, setEditingProfile] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const [activeSurface, setActiveSurface] = useState<Surface | null>(null);
   const [pulse, setPulse] = useState(0);
   const [reviewArtifact, setReviewArtifact] = useState<SessionArtifact | null>(null);
   const progress = 1 - milliseconds / session.timer.durationMs;
 
   useEffect(() => {
     if (!session.completion) return;
+    setActiveSurface(null);
     setPulse(1);
     const timeout = window.setTimeout(() => setPulse(0), 2800);
     return () => window.clearTimeout(timeout);
@@ -202,50 +205,72 @@ function App() {
     window.location.assign(url);
   };
   const actionLabel = session.timer.status === 'running' ? 'Pause' : session.timer.status === 'paused' ? 'Resume' : 'Start';
+  const stateCopy = session.timer.status === 'running'
+    ? 'the room is in flow'
+    : session.isHost ? 'you hold the room tempo' : `${session.participants.find((person) => person.memberId === session.hostId)?.name ?? 'the host'} holds the tempo`;
+  const surfaceLabel: Record<Surface, string> = {workspace: 'Workspace', environment: 'Environment', tempo: 'Tempo', room: 'Room'};
+  const surfaceButtons: Array<{id: Surface | null; label: string; icon: React.ReactNode}> = [
+    {id: null, label: 'Focus', icon: <Timer size={18} />},
+    {id: 'workspace', label: 'Workspace', icon: <ListTodo size={18} />},
+    {id: 'environment', label: 'Environment', icon: <SlidersHorizontal size={18} />},
+    {id: 'tempo', label: 'Tempo', icon: <Settings size={18} />},
+    {id: 'room', label: 'Room', icon: <Users size={18} />},
+  ];
 
   return (
-    <main className={`${backdrop.enabled ? 'video-active' : ''} ${backdrop.reducedSensory ? 'reduced-sensory' : ''}`} style={{'--lava-opacity': backdrop.lavaMix} as React.CSSProperties}>
-      {!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />}
-      <div className="grain" aria-hidden="true" />
-      <header>
-        <a className="brand" href="/" aria-label="Magma home"><span className="brand-mark"><Flame size={19} fill="currentColor" /></span><strong>magma</strong><i>focus together</i></a>
-        <div className="room-bar glass"><span className={`status-dot ${session.connected ? 'online' : ''}`} /><input aria-label="Room name" value={roomDraft} onChange={(event) => setRoomDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && joinRoom()} /><button className="icon-button" onClick={joinRoom} aria-label="Join room"><Link2 size={15} /></button><button className="invite" onClick={copyInvite}>{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? 'Copied' : 'Invite'}</button></div>
-      </header>
+    <main className={`instrument-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''}`}>
+      <section className="media-stage" aria-label="Living view">
+        <YouTubeBackdrop enabled={backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} />
+        {(!backdrop.enabled || backdrop.reducedSensory) && <div className="quiet-field">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />}<span>{backdrop.reducedSensory ? 'Quiet field' : 'Lava field'}</span></div>}
+      </section>
 
-      <div className="layout">
-        <aside className="left-rail" aria-label="People and reactions">
-          <People participants={session.participants} profile={session.profile} hostId={session.hostId} isHost={session.isHost} editProfile={() => setEditingProfile(true)} transferHost={session.transferHost} />
-          {editingProfile && <section className="glass profile-card"><ProfileEditor profile={session.profile} onChange={session.updateProfile} onClose={() => setEditingProfile(false)} /></section>}
-          <div className="reactions glass" aria-label="Send a reaction">{[['🔥','fire'], ['✨','sparkles'], ['🫡','salute'], ['💧','water']].map(([emoji, name]) => <button aria-label={`Send ${name} reaction`} key={emoji} onClick={() => session.react(emoji)}>{emoji}</button>)}</div>
-        </aside>
+      <aside className="instrument-rail" aria-label="Magma focus instrument">
+        <header className="instrument-header">
+          <a className="brand" href="/" aria-label="Magma home"><Flame size={17} fill="currentColor" /><h1>magma</h1></a>
+          <button className="room-locus" onClick={() => setActiveSurface('room')}><span className={`status-dot ${session.connected ? 'online' : ''}`} /><span>{room}</span><small>{session.participants.length}</small></button>
+        </header>
 
-        <div className="center-column">
-          <YouTubeBackdrop enabled={backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} />
-          <section className="timer-stage">
-          {(session.completion || reviewArtifact) && <CompletionRitual artifact={(session.completion || reviewArtifact)!} decision={ritual.decisions[(session.completion || reviewArtifact)!.id]} onDecide={(decision) => { const artifact = (session.completion || reviewArtifact)!; ritual.decide(artifact.id, decision); if (session.completion?.id === artifact.id) ritual.clearAim(); void audio.playCue(decision === 'counted' ? 'smallWin' : 'reset'); }} onClose={() => { if (session.completion?.mode === 'focus') ritual.clearAim(); session.dismissCompletion(); setReviewArtifact(null); }} />}
-          <p className="eyebrow"><Sparkles size={14} /> {session.timer.status === 'running' ? 'the room is in flow' : session.isHost ? 'you hold the room tempo' : `${session.participants.find((person) => person.memberId === session.hostId)?.name ?? 'the host'} holds the tempo`}</p>
-          {session.proposal && <div className="proposal glass"><span><Crown size={14} /> {session.proposal.fromName} asks to {session.proposal.command.type === 'mode' ? `switch to ${session.proposal.command.mode}` : session.proposal.command.type}</span>{session.isHost ? <div><button onClick={() => session.approve(session.proposal!.id)}>Allow</button><button onClick={() => session.dismiss(session.proposal!.id)}>Not now</button></div> : <small>Waiting for the host</small>}</div>}
-          <div className="mode-switcher glass">{MODES.map((mode) => <button aria-pressed={session.timer.mode === mode.id} className={session.timer.mode === mode.id ? 'active' : ''} key={mode.id} onClick={() => session.command({type: 'mode', mode: mode.id})}>{mode.label}</button>)}</div>
-          {session.connected && session.participants.length > 0 && session.timer.mode === 'focus' && session.timer.status !== 'running' && <BlockAim ritual={ritual} sessionId={session.timer.sessionId} />}
-          <div className="timer-wrap"><div className="orbit" style={{'--progress': `${Math.max(0, Math.min(1, progress)) * 360}deg`} as React.CSSProperties} /><div className="timer" role="timer" aria-live="off">{formatRemaining(milliseconds)}</div></div>
-          <p className="focus-copy">One shared clock. Your own way through it.</p>
-          <div className="timer-actions"><button className="primary" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})}>{session.timer.status === 'running' ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}{session.isHost ? `${actionLabel} together` : `Ask to ${actionLabel.toLowerCase()}`}</button><button className="round-button" onClick={() => session.command({type: 'reset'})} aria-label={session.isHost ? 'Reset timer' : 'Ask host to reset timer'}><RotateCcw size={18} /></button><button className="round-button" onClick={() => setShowSettings((value) => !value)} aria-label="Timer settings"><Settings size={18} /></button></div>
-          <div className="session-dots" role="img" aria-label={`${session.timer.focusCount % 4} of four focus sessions complete`}>{[0,1,2,3].map((index) => <span className={index < session.timer.focusCount % 4 ? 'complete' : index === session.timer.focusCount % 4 ? 'active' : ''} key={index} />)}</div>
-          {showSettings && <div className="timer-settings glass"><label>Focus <input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.focus / 60_000} id="focus-duration" /> min</label><label>Short <input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.shortBreak / 60_000} id="short-duration" /> min</label><label>Long <input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.longBreak / 60_000} id="long-duration" /> min</label><label className="auto-setting"><input type="checkbox" defaultChecked={session.timer.autoAdvance} id="auto-advance" /> Auto-start breaks</label><button disabled={!session.isHost} onClick={() => { const get = (id: string) => Number((document.getElementById(id) as HTMLInputElement).value) * 60_000; session.updateSettings({focus: get('focus-duration'), shortBreak: get('short-duration'), longBreak: get('long-duration')}, (document.getElementById('auto-advance') as HTMLInputElement).checked); }}>{session.isHost ? 'Set room cadence' : 'Host controls cadence'}</button></div>}
-          {session.artifacts[0] && !session.completion && !reviewArtifact && <button className="last-ember" onClick={() => setReviewArtifact(session.artifacts[0])}><Flame size={13} fill="currentColor" /> Last ember · {Math.round(session.artifacts[0].durationMs / 60_000)}m · {session.artifacts[0].participants.length} together</button>}
+        <div className="clock-strip" aria-label="Shared clock summary">
+          <button className="clock-summary" onClick={() => setActiveSurface(null)}><span>{MODES.find((mode) => mode.id === session.timer.mode)?.label}</span><strong>{formatRemaining(milliseconds)}</strong></button>
+          <button className="clock-transport" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})} aria-label={session.timer.status === 'running' ? 'Pause clock' : 'Start clock'}>{session.timer.status === 'running' ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}</button>
+        </div>
+
+        <div className="surface-stack">
+          <section className="focus-console" hidden={activeSurface !== null} aria-label="Focus timer">
+            {(session.completion || reviewArtifact) ? <CompletionRitual artifact={(session.completion || reviewArtifact)!} decision={ritual.decisions[(session.completion || reviewArtifact)!.id]} onDecide={(decision) => { const artifact = (session.completion || reviewArtifact)!; ritual.decide(artifact.id, decision); if (session.completion?.id === artifact.id) ritual.clearAim(); void audio.playCue(decision === 'counted' ? 'smallWin' : 'reset'); }} onClose={() => { if (session.completion?.mode === 'focus') ritual.clearAim(); session.dismissCompletion(); setReviewArtifact(null); }} /> : <>
+              <p className="surface-kicker"><Sparkles size={13} /> {stateCopy}</p>
+              {session.proposal && <div className="proposal"><span><Crown size={14} /> {session.proposal.fromName} asks to {session.proposal.command.type === 'mode' ? `switch to ${session.proposal.command.mode}` : session.proposal.command.type}</span>{session.isHost ? <div><button onClick={() => session.approve(session.proposal!.id)}>Allow</button><button onClick={() => session.dismiss(session.proposal!.id)}>Not now</button></div> : <small>Waiting for the host</small>}</div>}
+              {session.connected && session.participants.length > 0 && session.timer.mode === 'focus' && session.timer.status !== 'running' && <BlockAim ritual={ritual} sessionId={session.timer.sessionId} />}
+              {session.timer.status === 'running' && ritual.finishLine && <div className="held-aim"><span>Finish line</span><strong>{ritual.finishLine}</strong></div>}
+              <div className="timer-wrap"><div className="orbit" style={{'--progress': `${Math.max(0, Math.min(1, progress)) * 360}deg`} as React.CSSProperties} /><div className="timer" role="timer" aria-live="off">{formatRemaining(milliseconds)}</div></div>
+              <div className="timer-meta"><span>{MODES.find((mode) => mode.id === session.timer.mode)?.label}</span><span>{session.timer.focusCount % 4 + 1} of 4</span></div>
+              <div className="timer-actions"><button className="primary" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})}>{session.timer.status === 'running' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}{session.isHost ? `${actionLabel} together` : `Ask to ${actionLabel.toLowerCase()}`}</button><button className="secondary-action" onClick={() => session.command({type: 'reset'})} aria-label={session.isHost ? 'Reset timer' : 'Ask host to reset timer'}><RotateCcw size={17} /></button></div>
+              {session.artifacts[0] && <button className="last-ember" onClick={() => setReviewArtifact(session.artifacts[0])}><Flame size={13} fill="currentColor" /> Last ember · {Math.round(session.artifacts[0].durationMs / 60_000)}m</button>}
+            </>}
+          </section>
+
+          <section className="tool-surface" hidden={activeSurface !== 'workspace'} aria-labelledby="surface-workspace"><div className="surface-header"><div><p>Shared surface</p><h2 id="surface-workspace">Workspace</h2></div><button className="icon-button" onClick={() => setActiveSurface(null)} aria-label="Close Workspace"><X size={18} /></button></div><Workspace profile={session.profile} participants={session.participants} /></section>
+          <section className="tool-surface" hidden={activeSurface !== 'environment'} aria-labelledby="surface-environment"><div className="surface-header"><div><p>Personal surface</p><h2 id="surface-environment">Environment</h2></div><button className="icon-button" onClick={() => setActiveSurface(null)} aria-label="Close Environment"><X size={18} /></button></div><EnvironmentLab backdrop={backdrop} audio={audio} /></section>
+          <section className="tool-surface" hidden={activeSurface !== 'tempo'} aria-labelledby="surface-tempo"><div className="surface-header"><div><p>Room authority</p><h2 id="surface-tempo">Tempo</h2></div><button className="icon-button" onClick={() => setActiveSurface(null)} aria-label="Close Tempo"><X size={18} /></button></div>
+            <div className="mode-switcher">{MODES.map((mode) => <button aria-pressed={session.timer.mode === mode.id} className={session.timer.mode === mode.id ? 'active' : ''} key={mode.id} onClick={() => session.command({type: 'mode', mode: mode.id})}>{mode.label}</button>)}</div>
+            <div className="timer-settings"><label>Focus <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.focus / 60_000} id="focus-duration" /> min</span></label><label>Short break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.shortBreak / 60_000} id="short-duration" /> min</span></label><label>Long break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.longBreak / 60_000} id="long-duration" /> min</span></label><label className="auto-setting"><input type="checkbox" defaultChecked={session.timer.autoAdvance} id="auto-advance" /> Auto-start breaks</label><button disabled={!session.isHost} onClick={() => { const get = (id: string) => Number((document.getElementById(id) as HTMLInputElement).value) * 60_000; session.updateSettings({focus: get('focus-duration'), shortBreak: get('short-duration'), longBreak: get('long-duration')}, (document.getElementById('auto-advance') as HTMLInputElement).checked); }}>{session.isHost ? 'Set room cadence' : 'Host controls cadence'}</button></div>
+            <button className="text-action" onClick={assist.requestNotifications}>{assist.notifications ? <Bell size={14} /> : <BellOff size={14} />}{assist.notifications ? 'Completion alerts on' : 'Enable completion alerts'}</button>
+          </section>
+          <section className="tool-surface" hidden={activeSurface !== 'room'} aria-labelledby="surface-room"><div className="surface-header"><div><p>Public link room</p><h2 id="surface-room">Room</h2></div><button className="icon-button" onClick={() => setActiveSurface(null)} aria-label="Close Room"><X size={18} /></button></div>
+            <div className="room-editor"><span className={`status-dot ${session.connected ? 'online' : ''}`} /><input aria-label="Room name" value={roomDraft} onChange={(event) => setRoomDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && joinRoom()} /><button onClick={joinRoom}>Join</button><button onClick={copyInvite}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Invite'}</button></div>
+            <People participants={session.participants} profile={session.profile} hostId={session.hostId} isHost={session.isHost} editProfile={() => setEditingProfile(true)} transferHost={session.transferHost} />
+            {editingProfile && <div className="profile-card"><ProfileEditor profile={session.profile} onChange={session.updateProfile} onClose={() => setEditingProfile(false)} /></div>}
+            <div className="reactions" aria-label="Send a reaction">{[['🔥','fire'], ['✨','sparkles'], ['🫡','salute'], ['💧','water']].map(([emoji, name]) => <button aria-label={`Send ${name} reaction`} key={emoji} onClick={() => session.react(emoji)}>{emoji}</button>)}</div>
+            <p className="surface-note">Anyone with this link can enter. Don’t put secrets in the workspace.</p>
           </section>
         </div>
 
-        <aside className="right-rail" aria-label="Shared workspace and personal ambience">
-          <Workspace profile={session.profile} participants={session.participants} />
-          <EnvironmentLab backdrop={backdrop} audio={audio} running={session.timer.status === 'running'} />
-          <section className="glass sound-card"><div className="card-title"><span><Volume2 size={17} /> Local ambience</span><button className="icon-button" onClick={audio.toggle} aria-label={audio.enabled ? 'Mute warm noise' : 'Play warm noise'}>{audio.enabled ? <Volume2 size={15} /> : <VolumeX size={15} />}</button></div><div className="sound-row"><span>〰️</span><div><strong>Warm noise</strong><small>{audio.enabled ? `${Math.round(audio.volume * 100)}% · only for you` : 'Tap sound to begin'}</small></div><input type="range" min="0" max="100" value={Math.round(audio.volume * 100)} onChange={(event) => audio.setVolume(Number(event.target.value) / 100)} disabled={!audio.enabled} aria-label="Warm noise volume" /></div><button className="notification-toggle" onClick={assist.requestNotifications}>{assist.notifications ? <Bell size={13} /> : <BellOff size={13} />}{assist.notifications ? 'Completion alerts on' : 'Enable completion alerts'}</button></section>
-        </aside>
-      </div>
+        <nav className="tool-dock" aria-label="Instrument surfaces">{surfaceButtons.map((surface) => <button key={surface.label} aria-label={surface.label} aria-pressed={activeSurface === surface.id} className={activeSurface === surface.id ? 'active' : ''} onClick={() => setActiveSurface(surface.id)}>{surface.icon}<span>{surface.label}</span></button>)}</nav>
+        <div className="instrument-status"><span>{session.connected ? 'synced' : 'reconnecting'}</span><span>{activeSurface ? surfaceLabel[activeSurface] : session.isHost ? 'you are host' : 'hosted tempo'}</span></div>
+      </aside>
 
       <div className="reaction-burst" aria-live="polite">{session.reactions.map((reaction, index) => <span key={reaction.id} style={{'--offset': `${(index - 3) * 38}px`} as React.CSSProperties} title={`From ${reaction.from}`}>{reaction.emoji}</span>)}</div>
       <div className="room-live" aria-live="polite">{session.notice}</div>
-      <footer><span>public room · do not share secrets</span><i>·</i><span>{session.isHost ? 'you are host' : 'hosted tempo'}</span><i>·</i><span>{session.connected ? 'synced' : 'reconnecting'}</span></footer>
     </main>
   );
 }

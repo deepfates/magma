@@ -3,7 +3,7 @@ import {parseYouTubeSource, TREASURE_ISLAND, youtubeEmbedUrl, type YouTubeSource
 
 const STORAGE_KEY = 'magma:youtube-backdrop:v2';
 type Settings = {enabled: boolean; muted: boolean; lavaMix: number; reducedSensory: boolean; source: YouTubeSource};
-const defaults: Settings = {enabled: false, muted: true, lavaMix: 0.72, reducedSensory: false, source: TREASURE_ISLAND};
+const defaults: Settings = {enabled: true, muted: true, lavaMix: 0.72, reducedSensory: false, source: TREASURE_ISLAND};
 
 const load = (): Settings => {
   try {

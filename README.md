@@ -1,6 +1,6 @@
 # Magma
 
-Magma is a multiplayer focus ritual with a full-screen lava shader, a server-authoritative clock, live presence, reactions, and a TinyBase CRDT workspace. It takes the useful shape of Flocus—one beautiful timer plus small focus tools—without copying its branding or assets.
+Magma is a multiplayer focus instrument: a living view, a server-authoritative clock, quiet presence, and a TinyBase CRDT workspace. The current name is less important than the interaction—the product should feel calm enough to live beside and crisp enough to operate deliberately.
 
 - **Live:** [magma-one-azure.vercel.app](https://magma-one-azure.vercel.app)
 - **Room service:** `magma-focus.deepfates.partykit.dev`
@@ -14,10 +14,11 @@ Magma is a multiplayer focus ritual with a full-screen lava shader, a server-aut
 - People have stable local profiles and intentions. Tasks support ownership, while CRDT note cards (“sparks”) let the room communicate without breaking focus.
 - Tasks and sparks live in a TinyBase `MergeableStore`, persist to IndexedDB, and synchronize through the same room. Server-side schemas, message caps, and rate limits constrain writes.
 - Warm noise is synthesized locally with Web Audio. Wake Lock and opt-in completion notifications are progressive enhancements; no audio assets or tracking services are bundled.
-- A personal “living window” offers the Treasure Island panorama from Mersea/Teleport, ABC7’s Treasure Island camera, TrazCam, NASA’s ISS feed, and standard YouTube video or playlist links. Loading is deliberate, starts muted, remembers the local choice, and keeps the privacy-enhanced player’s controls visible and unobscured.
-- The local Environment Lab is a reversible scene recipe: living-window choice, restrained lava level, synthesized warm noise, an opt-in cue deck, and a one-action quiet mode. Its advanced authoring surface lazy-loads Tweakpane; personal sensory choices never enter the shared CRDT.
+- A dominant living view opens on the Treasure Island panorama from Mersea/Teleport and also accepts ABC7’s Treasure Island camera, TrazCam, NASA’s ISS feed, and standard YouTube video or playlist links. It starts muted, remembers the local choice, and keeps the privacy-enhanced player complete and unobscured.
+- One instrument rail holds the shared clock and four stable surfaces: Workspace, Environment, Tempo, and Room. The clock summary remains reachable while a surface is open; surface drafts and shared state survive responsive posture changes.
+- Environment is one reversible authority for the living view, synthesized warm noise, opt-in cue deck, and one-action quiet mode. Personal sensory choices never enter the shared CRDT.
 - Before a focus Block, a person can name one visible finish line and expand a disposable three-item “Right Now” list. Afterward they decide whether the interval was clean and finish-directed; the daily tally counts that decision exactly once, resets each day, and never becomes a streak or leaderboard.
-- The WebGL lava responds to phase, presence, and completion energy, pauses when hidden, and respects reduced motion.
+- The WebGL field is a fallback when the living view is closed. It pauses when hidden and respects reduced motion; it is atmosphere, not the product identity.
 
 ## Productivity grammar
 
@@ -31,10 +32,10 @@ Magma intentionally has less productivity machinery than its atmosphere might su
 
 The cue deck follows the same boundary. Signals are authored and previewable, audio is off until chosen, and “quiet everything” is a complete setup. Magma is an instrument a person operates, not an optimizer that operates on the person.
 
-## Reuse boundaries
+## Interface laws and reuse boundaries
 
 - TinyBase remains scoped to independently editable shared workspace data; the clock stays server-authoritative.
-- Tweakpane 4 powers only the lazy advanced scene surface. It was selected from the owner’s GitHub stars after checking license, maintenance, and bundle shape; the modal drawer itself stays native HTML/CSS so its keyboard and reduced-motion behavior do not depend on another framework.
+- The render architecture follows Interface Lab’s artifact-first hierarchy, lightest-boundary rule, stable surface identity, and capability-preserving responsive postures. Its private pre-1.0 Svelte packages are not imported into this React app; the product laws transfer, not framework machinery or unlicensed source.
 - Web Audio and the YouTube IFrame API remain native integrations. Adding a larger framework for either would increase architecture without increasing the capability.
 - Starred projects such as ENTHEA informed sensory-safety ideas but are not copied into Magma; its AGPL license and different product shape make inspiration the correct reuse boundary.
 
@@ -51,7 +52,7 @@ Open the same URL (including its `?room=` value) in two browser windows. The web
 npm run check
 ```
 
-This runs timer/state-machine and YouTube URL tests, TypeScript, a production build, and real Chromium multiplayer tests covering authority, CRDT convergence, reconnect durability, host handoff, server-alarm completion, one-time Block accounting, deliberate living-window persistence, phone layout, and automated accessibility checks.
+This runs timer/state-machine and YouTube URL tests, TypeScript, a production build, and real Chromium multiplayer tests covering authority, CRDT convergence, reconnect durability, host handoff, server-alarm completion, one-time Block accounting, living-view persistence and non-overlap, surface continuity across posture changes, phone layout, and automated accessibility checks.
 
 ## Put rooms online
 
@@ -71,3 +72,5 @@ Host `dist/` on any static host. New rooms receive high-entropy links, but produ
 The CRDT owns independently editable workspace data. The clock is server-authoritative because resolving concurrent edits and agreeing on wall time are different problems. The timer domain is pure TypeScript in `src/domain/timer.ts`, shared by the PartyKit worker and its tests.
 
 The current endpoint is an excellent public-link focus room, not an account product. Private teams, account recovery, moderation, organization policy, analytics, calendar integrations, and native mobile background execution are deliberately outside this release until their product meaning and operating model are chosen.
+
+The exact cover-background composition remains intentionally unclaimed for the current YouTube source: YouTube requires its controls and player to remain visible and unobscured. The render layer has a clean media boundary so a separately licensed native HLS/WebRTC/video source can later use true cover framing without changing the clock, room, ritual, or workspace authorities.
