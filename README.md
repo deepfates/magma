@@ -2,6 +2,9 @@
 
 Magma is a multiplayer Pomodoro room with a full-screen lava shader, a server-time clock, live presence, reactions, and a TinyBase CRDT task list. It takes the useful shape of Flocus—one beautiful timer plus small focus tools—without copying its branding or assets.
 
+- **Live:** [magma-one-azure.vercel.app](https://magma-one-azure.vercel.app)
+- **Room service:** `magma-focus.deepfates.partykit.dev`
+
 ## What is real
 
 - A room is named by `?room=...`; the Invite button copies the join link.
@@ -29,11 +32,11 @@ This runs the timestamp/state-machine tests, TypeScript, and the production buil
 
 ## Put rooms online
 
-Deploy the PartyKit worker from your own account, then point the web build at it:
+Deploy the PartyKit worker, then point the web build at it:
 
 ```sh
 npm run deploy:room
-VITE_PARTYKIT_HOST=magma-focus.YOUR_PARTYKIT_USERNAME.partykit.dev npm run build
+VITE_PARTYKIT_HOST=magma-focus.deepfates.partykit.dev npm run build
 ```
 
 Host `dist/` on any static host. Production auth and private-room authorization are intentionally not faked in this slice; anyone with a room link can join and control its timer.
