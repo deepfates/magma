@@ -1,0 +1,8 @@
+node_modules
+dist
+.partykit
+.env
+.env.*
+!.env.example
+*.local
+*.tsbuildinfo
