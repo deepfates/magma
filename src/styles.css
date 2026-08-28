@@ -7,6 +7,10 @@ button, input { font: inherit; }
 button { color: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 .lava { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -3; background: radial-gradient(circle at 30% 60%, #7434d8, transparent 55%), #251138; }
+.youtube-backdrop { position: fixed; inset: 0; z-index: -4; overflow: hidden; opacity: var(--video-opacity); background: #100a24; pointer-events: none; }
+.youtube-backdrop iframe { position: absolute; left: 50%; top: 50%; width: 177.78vh; height: 56.25vw; min-width: 100vw; min-height: 100vh; border: 0; transform: translate(-50%, -50%) scale(1.03); filter: saturate(.72) contrast(1.08); }
+.video-veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(12,6,31,.35), rgba(22,8,45,.58)), radial-gradient(circle at center, transparent 15%, rgba(12,4,31,.42) 90%); }
+.video-active .lava { opacity: .72; mix-blend-mode: screen; }
 .grain { position: fixed; inset: 0; z-index: -2; opacity: .09; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E"); }
 main { min-height: 100vh; padding: 25px 30px 18px; display: flex; flex-direction: column; position: relative; }
 header { display: flex; justify-content: space-between; align-items: center; gap: 18px; }
@@ -26,7 +30,7 @@ header { display: flex; justify-content: space-between; align-items: center; gap
 .left-rail, .right-rail { display: flex; flex-direction: column; gap: 14px; }
 .left-rail { align-self: end; padding-bottom: 28px; }
 .right-rail { align-self: center; }
-.people-card, .tasks-card, .sound-card { border-radius: 22px; padding: 17px; }
+.people-card, .tasks-card, .sound-card, .backdrop-card { border-radius: 22px; padding: 17px; }
 .card-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .card-title > span { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; }
 .card-title small { font-size: 11px; opacity: .58; }
@@ -79,6 +83,18 @@ header { display: flex; justify-content: space-between; align-items: center; gap
 .sound-card .card-title { margin-bottom: 8px; }
 .sound-row { display: grid; grid-template-columns: 31px 1fr 66px; align-items: center; gap: 6px; }
 .sound-row input { width: 66px; accent-color: #f5c6e0; }
+.backdrop-card .card-title { margin-bottom: 9px; }
+.live-preset { display: flex; align-items: center; gap: 6px; width: 100%; margin-bottom: 8px; padding: 8px 9px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; color: rgba(255,255,255,.76); background: rgba(255,255,255,.07); cursor: pointer; font-size: 10px; font-weight: 700; }
+.live-preset svg { color: #ff7d8d; }
+.backdrop-source { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px; }
+.backdrop-source input { min-width: 0; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; padding: 8px 9px; outline: 0; color: white; background: rgba(9,3,24,.2); font-size: 10px; }
+.backdrop-source button { border: 0; border-radius: 9px; padding: 0 9px; color: #351358; background: rgba(255,255,255,.9); cursor: pointer; font-size: 9px; font-weight: 800; }
+.backdrop-error { display: block; margin-top: 5px; color: #ffc1c7; font-size: 9px; }
+.backdrop-tuning { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 9px; }
+.backdrop-tuning label { display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,.62); font-size: 9px; }
+.backdrop-tuning input { width: 64px; accent-color: #f2a6c8; }
+.backdrop-tuning button { display: flex; align-items: center; gap: 4px; border: 0; padding: 5px; color: rgba(255,255,255,.66); background: transparent; cursor: pointer; font-size: 9px; }
+.backdrop-now { display: block; margin-top: 5px; overflow: hidden; color: rgba(255,255,255,.48); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .profile-card { border-radius: 22px; padding: 16px; }
 .profile-editor { display: grid; gap: 12px; }
 .editor-heading { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
@@ -151,6 +167,7 @@ footer i { font-style: normal; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lava { display: none; }
+  .youtube-backdrop { display: none; }
   .reaction-burst span { animation-duration: .01ms; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }

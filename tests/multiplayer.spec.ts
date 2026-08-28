@@ -84,3 +84,17 @@ test('the core room is accessible and fits a phone viewport', async ({browser}) 
   expect(results.violations).toEqual([]);
   await context.close();
 });
+
+test('a person can load and retain a YouTube playlist backdrop', async ({page}) => {
+  await page.goto(`/?room=backdrop-${crypto.randomUUID()}`);
+  const frame = page.locator('.youtube-backdrop iframe');
+  await expect(frame).toHaveAttribute('src', /_VqvVJfmyfs/);
+  await page.getByLabel('YouTube video or playlist URL').fill('https://www.youtube.com/playlist?list=PL1234567890abc');
+  await page.getByRole('button', {name: 'Load'}).click();
+  await expect(frame).toHaveAttribute('src', /embed\/videoseries/);
+  await expect(frame).toHaveAttribute('src', /list=PL1234567890abc/);
+  await page.reload();
+  await expect(frame).toHaveAttribute('src', /list=PL1234567890abc/);
+  await page.getByRole('button', {name: 'Hide YouTube backdrop'}).click();
+  await expect(frame).toHaveCount(0);
+});

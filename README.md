@@ -14,6 +14,7 @@ Magma is a multiplayer focus ritual with a full-screen lava shader, a server-aut
 - People have stable local profiles and intentions. Tasks support ownership, while CRDT note cards (“sparks”) let the room communicate without breaking focus.
 - Tasks and sparks live in a TinyBase `MergeableStore`, persist to IndexedDB, and synchronize through the same room. Server-side schemas, message caps, and rate limits constrain writes.
 - Warm noise is synthesized locally with Web Audio. Wake Lock and opt-in completion notifications are progressive enhancements; no audio assets or tracking services are bundled.
+- A personal moving backdrop defaults to ABC7 Bay Area’s live YouTube feed and accepts standard YouTube video or playlist links. It starts muted, supports blend control, remembers the local choice, and uses YouTube’s privacy-enhanced player for pasted media.
 - The WebGL lava responds to phase, presence, and completion energy, pauses when hidden, and respects reduced motion.
 
 ## Run two-player locally
@@ -29,7 +30,7 @@ Open the same URL (including its `?room=` value) in two browser windows. The web
 npm run check
 ```
 
-This runs timer/state-machine tests, TypeScript, a production build, and real Chromium multiplayer tests covering authority, CRDT convergence, reconnect durability, host handoff, server-alarm completion, phone layout, and automated accessibility checks.
+This runs timer/state-machine and YouTube URL tests, TypeScript, a production build, and real Chromium multiplayer tests covering authority, CRDT convergence, reconnect durability, host handoff, server-alarm completion, backdrop persistence, phone layout, and automated accessibility checks.
 
 ## Put rooms online
 

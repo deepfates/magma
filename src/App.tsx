@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
 import {
-  Bell, BellOff, Check, Circle, Copy, Crown, Flame, Link2, Pause, Pin, Play, Plus,
-  RotateCcw, Settings, Sparkles, StickyNote, Trash2, UserRound, Users, Volume2, VolumeX, X,
+  Bell, BellOff, Check, Circle, Copy, Crown, Eye, EyeOff, Flame, Link2, Pause, Pin, Play, Plus,
+  Radio, RotateCcw, Settings, Sparkles, StickyNote, Trash2, Users, Volume2, VolumeX, X, Youtube,
 } from 'lucide-react';
 import {useTable} from 'tinybase/ui-react';
 import {LavaShader} from './LavaShader';
@@ -11,6 +11,8 @@ import {store} from './store';
 import {useAmbientAudio} from './useAmbientAudio';
 import {useFocusAssist} from './useFocusAssist';
 import {useRoom} from './useRoom';
+import {useYouTubeBackdrop} from './useYouTubeBackdrop';
+import {YouTubeBackdrop} from './YouTubeBackdrop';
 
 const MODES: {id: TimerMode; label: string}[] = [
   {id: 'focus', label: 'Focus'},
@@ -160,11 +162,29 @@ function CompletionRitual({artifact, onClose}: {artifact: SessionArtifact; onClo
   );
 }
 
+function BackdropControls({backdrop}: {backdrop: ReturnType<typeof useYouTubeBackdrop>}) {
+  const [draft, setDraft] = useState('');
+  const apply = () => {
+    if (backdrop.useInput(draft)) setDraft('');
+  };
+  return (
+    <section className="glass backdrop-card">
+      <div className="card-title"><span><Youtube size={17} /> Moving backdrop</span><button className="icon-button" onClick={() => backdrop.setEnabled(!backdrop.enabled)} aria-label={backdrop.enabled ? 'Hide YouTube backdrop' : 'Show YouTube backdrop'}>{backdrop.enabled ? <Eye size={15} /> : <EyeOff size={15} />}</button></div>
+      <button className="live-preset" onClick={backdrop.useDefault}><Radio size={13} /> ABC7 Bay Area live</button>
+      <div className="backdrop-source"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && apply()} placeholder="YouTube video or playlist URL" aria-label="YouTube video or playlist URL" /><button onClick={apply}>Load</button></div>
+      {backdrop.error && <small className="backdrop-error" role="alert">{backdrop.error}</small>}
+      <div className="backdrop-tuning"><label>Blend <input type="range" min="15" max="85" value={Math.round(backdrop.opacity * 100)} onChange={(event) => backdrop.setOpacity(Number(event.target.value) / 100)} aria-label="Backdrop visibility" /></label><button onClick={() => backdrop.setMuted(!backdrop.muted)}>{backdrop.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}{backdrop.muted ? 'Muted' : 'Sound on'}</button></div>
+      <small className="backdrop-now">{backdrop.enabled ? backdrop.source.label : 'Backdrop hidden'} · only for you</small>
+    </section>
+  );
+}
+
 function App() {
   const [room] = useState(roomFromUrl);
   const session = useRoom(room);
   const milliseconds = useClock(session.remaining);
   const audio = useAmbientAudio();
+  const backdrop = useYouTubeBackdrop();
   const assist = useFocusAssist(session.timer.status === 'running', session.completion, audio.playChime);
   const [copied, setCopied] = useState(false);
   const [roomDraft, setRoomDraft] = useState(room);
@@ -196,7 +216,8 @@ function App() {
   const actionLabel = session.timer.status === 'running' ? 'Pause' : session.timer.status === 'paused' ? 'Resume' : 'Start';
 
   return (
-    <main>
+    <main className={backdrop.enabled ? 'video-active' : ''}>
+      <YouTubeBackdrop enabled={backdrop.enabled} embedUrl={backdrop.embedUrl} opacity={backdrop.opacity} title={backdrop.source.label} />
       <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />
       <div className="grain" aria-hidden="true" />
       <header>
@@ -226,6 +247,7 @@ function App() {
 
         <aside className="right-rail" aria-label="Shared workspace and personal ambience">
           <Workspace profile={session.profile} participants={session.participants} />
+          <BackdropControls backdrop={backdrop} />
           <section className="glass sound-card"><div className="card-title"><span><Volume2 size={17} /> Local ambience</span><button className="icon-button" onClick={audio.toggle} aria-label={audio.enabled ? 'Mute warm noise' : 'Play warm noise'}>{audio.enabled ? <Volume2 size={15} /> : <VolumeX size={15} />}</button></div><div className="sound-row"><span>〰️</span><div><strong>Warm noise</strong><small>{audio.enabled ? `${Math.round(audio.volume * 100)}% · only for you` : 'Tap sound to begin'}</small></div><input type="range" min="0" max="100" value={Math.round(audio.volume * 100)} onChange={(event) => audio.setVolume(Number(event.target.value) / 100)} disabled={!audio.enabled} aria-label="Warm noise volume" /></div><button className="notification-toggle" onClick={assist.requestNotifications}>{assist.notifications ? <Bell size={13} /> : <BellOff size={13} />}{assist.notifications ? 'Completion alerts on' : 'Enable completion alerts'}</button></section>
         </aside>
       </div>
