@@ -1,6 +1,6 @@
 ---
 id: mag-021t
-status: open
+status: in_progress
 deps: [mag-if4i]
 links: []
 created: 2026-08-29T10:42:12Z

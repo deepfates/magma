@@ -1,6 +1,6 @@
 ---
 id: mag-ovqs
-status: open
+status: in_progress
 deps: [mag-z6jr]
 links: []
 created: 2026-08-29T10:41:57Z

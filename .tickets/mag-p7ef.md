@@ -1,6 +1,6 @@
 ---
 id: mag-p7ef
-status: open
+status: in_progress
 deps: [mag-if4i]
 links: []
 created: 2026-08-29T10:41:35Z
