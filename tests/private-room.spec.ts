@@ -52,6 +52,8 @@ test('a private room bootstraps one owner, enrolls by separated code, returns by
   expect(firstInvitation.roomUrl).not.toContain(firstInvitation.capability);
   await owner.getByRole('button', {name: 'Enter the room'}).click();
   await expect(owner.getByText('you hold the room tempo')).toBeVisible();
+  await expect(owner.getByRole('button', {name: 'Start together'})).toBeVisible();
+  await expect(owner.getByRole('region', {name: 'Return to the Floor'})).toHaveCount(0);
 
   const member = await memberContext.newPage();
   member.on('websocket', (socket) => socketUrls.push(socket.url()));

@@ -200,6 +200,7 @@ test('the core room is accessible and fits a phone viewport', async ({browser}) 
   const page = await context.newPage();
   await page.goto(`/?room=access-${crypto.randomUUID()}`);
   await expect(page.getByText('you hold the room tempo')).toBeVisible();
+  await expect(page.getByRole('region', {name: 'Return to the Floor'})).toHaveCount(0);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   const opener = page.getByRole('button', {name: 'Environment'});
