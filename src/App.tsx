@@ -8,6 +8,7 @@ import {LavaShader} from './LavaShader';
 import {formatRemaining, type TimerMode, type TimerState} from './domain/timer';
 import type {Participant, Profile, SessionArtifact} from './domain/protocol';
 import {deriveParticipantPosture, isFloor, type PorchMessage} from './domain/porch';
+import {deriveSalonPhase} from './domain/salonPhase';
 import {store} from './store';
 import {useAmbientAudio} from './useAmbientAudio';
 import {useFocusAssist} from './useFocusAssist';
@@ -208,6 +209,9 @@ function App() {
   const surfaceTrigger = useRef<HTMLButtonElement | null>(null);
   const instrumentRef = useRef<HTMLElement | null>(null);
   const progress = 1 - milliseconds / session.timer.durationMs;
+  const salonPhase = deriveSalonPhase(session.timer, session.roomNow());
+  const selfPresence = session.participants.find((person) => person.memberId === session.profile.memberId)?.presence ?? 'here';
+  const readyCount = session.participants.filter((person) => person.presence === 'ready').length;
 
   const applyQuietBoundary = () => {
     backdrop.setMuted(true);
@@ -392,6 +396,12 @@ function App() {
           <button className="clock-summary" onClick={() => setActiveSurface(null)}><span>{MODES.find((mode) => mode.id === session.timer.mode)?.label}</span><strong>{formatRemaining(milliseconds)}</strong></button>
           <button className="clock-transport" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})} aria-label={session.timer.status === 'running' ? 'Pause clock' : 'Start clock'}>{session.timer.status === 'running' ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}</button>
         </div>
+
+        {(salonPhase === 'returning' || salonPhase === 'gathering') && session.connected && <section className={`return-band ${salonPhase}`} aria-label="Return to the Floor">
+          <div className="return-copy"><span>{salonPhase === 'returning' ? 'Return approaching' : 'The room is gathering'}</span><strong>{salonPhase === 'returning' ? `${formatRemaining(milliseconds)} until the next Block` : `${readyCount} ${readyCount === 1 ? 'person is' : 'people are'} ready`}</strong></div>
+          <div className="return-presence" aria-label="Your return posture"><button aria-label="Join the next Block" aria-pressed={selfPresence === 'ready'} onClick={() => session.setPresence('ready')}>Ready</button><button aria-label="Remain on the Porch" aria-pressed={selfPresence === 'here'} onClick={() => session.setPresence('here')}>Stay on Porch</button><button aria-label="Pause my presence" aria-pressed={selfPresence === 'away'} onClick={() => session.setPresence('away')}>Away</button></div>
+          {salonPhase === 'gathering' && <button className="return-start" onClick={() => session.command({type: 'start'})}>{session.isHost ? 'Start next Block' : 'Ask to start next Block'}</button>}
+        </section>}
 
         <div className="surface-stack">
           <section className="focus-console" hidden={activeSurface !== null} aria-label="Focus timer">

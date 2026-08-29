@@ -100,8 +100,8 @@ test('a completed focus becomes one durable ember and starts the break', async (
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('magma:block-ritual') ?? '{}').tally)).toBe(0);
 });
 
-test('the Floor holds social activity and opens it on the Porch', async ({browser}) => {
-  test.setTimeout(75_000);
+test('the Floor holds social activity, opens the Porch, and returns together', async ({browser}) => {
+  test.setTimeout(105_000);
   const room = `porch-${crypto.randomUUID()}`;
   const hostContext = await browser.newContext();
   const guestContext = await browser.newContext();
@@ -116,6 +116,7 @@ test('the Floor holds social activity and opens it on the Porch', async ({browse
 
   await host.getByRole('button', {name: 'Tempo'}).click();
   await host.getByRole('spinbutton', {name: 'Focus min'}).fill('0.5');
+  await host.getByRole('spinbutton', {name: 'Short break min'}).fill('0.5');
   await host.getByRole('button', {name: 'Set room cadence'}).click();
   await host.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
   await host.getByRole('button', {name: 'Ready'}).click();
@@ -166,6 +167,29 @@ test('the Floor holds social activity and opens it on the Porch', async ({browse
   await guest.locator('.tool-dock').getByRole('button', {name: 'Workspace', exact: true}).click();
   await guest.getByRole('tab', {name: /Sparks/}).click();
   await expect(guest.locator('.spark-list').getByText('A quiet thought for later')).toBeVisible();
+
+  await expect(host.getByText('Return approaching')).toBeVisible({timeout: 28_000});
+  await expect(host.getByRole('region', {name: 'Return to the Floor'})).toContainText(/0[0-9]:0[0-9] until the next Block/);
+  await guest.getByRole('button', {name: 'Pause my presence'}).click();
+  await host.reload();
+  await expect(host.getByText('Return approaching')).toBeVisible();
+  await expect(host.locator('.social-bloom-visual')).toHaveCount(0);
+
+  await expect(host.getByText('The room is gathering')).toBeVisible({timeout: 10_000});
+  await host.getByRole('button', {name: 'Room', exact: true}).click();
+  await expect(host.locator('.porch-messages').getByText('A quiet thought for later')).toBeVisible();
+  const guestStarts = guest.getByRole('button', {name: 'Start next Block'});
+  if (await guestStarts.isVisible()) await guestStarts.click();
+  else await host.getByRole('button', {name: 'Start next Block'}).click();
+
+  await expect(host.getByText('Conversation is resting.')).toBeVisible();
+  await expect(host.locator('.porch-messages').getByText('A quiet thought for later')).toHaveCount(0);
+  await expect(host.locator('.person').filter({hasText: 'Jules'}).locator('.posture')).toHaveText('away');
+  await expect(host.locator('.person').filter({hasText: 'Maya'}).locator('.posture')).toHaveText('focusing');
+  await guest.getByRole('button', {name: 'Environment', exact: true}).click();
+  await expect(guest.getByRole('button', {name: 'Open selected view'})).toBeVisible();
+  await expect(guest.getByRole('button', {name: 'Ritual cues off'})).toBeVisible();
+  await expect(guest.getByRole('button', {name: 'Social sounds off'})).toBeVisible();
 
   await hostContext.close();
   await guestContext.close();
