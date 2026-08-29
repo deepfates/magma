@@ -5,6 +5,10 @@ Magma is a multiplayer focus instrument: a living view, a server-authoritative c
 - **Live:** [magma-one-azure.vercel.app](https://magma-one-azure.vercel.app)
 - **Room service:** `magma-focus.deepfates.partykit.dev`
 
+## The product test
+
+A new person should be able to make a room, invite someone, name one thing they want to finish, start together, enjoy the shared quiet, meet naturally at the break, and want to do it again. Work that does not materially improve that experience—or the trustworthiness of the path beneath it—is not the next priority. The detailed constraints below guard the experience; they are not a feature checklist or a reason to turn Magma into a collaboration suite.
+
 ## Definition of finished — the intended 1.0 endpoint
 
 Magma 1.0 is finished when a trusted group of two to eight people can use it as a place they genuinely return to: arrive without disruption, gather around a shared intention, work together without social noise, reconnect naturally at a break, and leave enough context for the next person or session. It should feel calm while inhabited, expressive at thresholds, and legible without instruction.
@@ -74,7 +78,7 @@ Magma 1.0 is not video chat, a public community-discovery network, a creator bro
 
 ## What is real
 
-- Opening Magma without a room creates a high-entropy private room locus. The first device claims it with a non-extractable, room-scoped P-256 key stored in IndexedDB; returning admission proves that key rather than trusting an editable profile or browser URL.
+- Opening Magma without a room creates a high-entropy private room locus. The first device claims it with a non-extractable, room-scoped P-256 key stored in IndexedDB; returning admission proves that key rather than trusting an editable profile or browser URL. After creation, the owner gets one quiet handoff to copy a real invitation or enter solo before seeing the full instrument.
 - Owners and stewards can create role-scoped, expiring invitation capabilities. The room address and invitation code remain separate, rotation is atomic, and owners can revoke a member across all connected tabs. Revocation stops shared media, clears visible room state, and removes that room's local workspace cache.
 - The PartyKit worker enforces admission before the WebSocket reaches room code, strips client-supplied trusted headers, issues a fresh 30-second one-use ticket for every reconnect, and rechecks durable membership before revealing snapshots. Existing named rooms remain legacy-open instead of being silently claimed.
 - PartyKit owns the canonical timer state. Server alarms settle elapsed phases exactly once; clients derive the display from a sampled server-time offset instead of broadcasting every second.

@@ -193,6 +193,7 @@ function App() {
   const ritual = useBlockRitual();
   const assist = useFocusAssist(session.timer.status === 'running', session.completion, audio.playChime);
   const [copied, setCopied] = useState(false);
+  const [justCreated, setJustCreated] = useState(false);
   const [invitationPayload, setInvitationPayload] = useState('');
   const [invitationBusy, setInvitationBusy] = useState<'copying' | 'rotating' | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
@@ -316,15 +317,24 @@ function App() {
       if (legacyAccess) {
         const payload = url.toString();
         setInvitationPayload(payload);
-        await navigator.clipboard.writeText(payload).catch(() => undefined);
+        try {
+          await navigator.clipboard.writeText(payload);
+          setCopied(true);
+        } catch {
+          setCopied(false);
+        }
       } else {
         const capability = await session.createInvitation(role, rotate);
         if (!capability) return false;
         const payload = `Join my Magma room as ${role}:\n${url.toString()}\n\nInvitation code:\n${capability}`;
         setInvitationPayload(payload);
-        await navigator.clipboard.writeText(payload).catch(() => undefined);
+        try {
+          await navigator.clipboard.writeText(payload);
+          setCopied(true);
+        } catch {
+          setCopied(false);
+        }
       }
-      setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
       return true;
     } finally {
@@ -375,6 +385,8 @@ function App() {
             ? {kind: 'denied', reason: 'unknown', retryable: access.session.retryable}
             : access.session.kind === 'admitted' && !session.connected
               ? {kind: 'reconnecting', roomName: 'this Magma room'}
+              : access.session.kind === 'admitted' && justCreated
+                ? {kind: 'creating', step: 'ready', roomName: 'Private focus room', copying: invitationBusy === 'copying', copied, invitationPayload}
               : {kind: 'admitted', roomName: room, role: access.session.kind === 'admitted' ? access.session.admission.role : 'member'};
 
   return (
@@ -448,11 +460,13 @@ function App() {
     <ArrivalVeil
       state={arrivalState}
       backgroundRef={instrumentRef}
-      onCreate={(input) => {
+      onCreate={async (input) => {
         session.updateProfile({name: input.displayName, emoji: input.emoji});
         if (input.setup === 'quiet') applyQuietBoundary();
-        void access.create({...session.profile, name: input.displayName, emoji: input.emoji});
+        if (await access.create({...session.profile, name: input.displayName, emoji: input.emoji})) setJustCreated(true);
       }}
+      onCopyInvitation={() => invitationPayload ? copyPreparedInvitation() : copyInvite()}
+      onEnterCreatedRoom={() => setJustCreated(false)}
       onEnter={(input) => {
         session.updateProfile({name: input.displayName, emoji: input.emoji});
         if (input.setup === 'quiet') applyQuietBoundary();

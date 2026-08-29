@@ -29,6 +29,7 @@ export type ArrivalState =
       roomName: string;
       copying?: boolean;
       copied?: boolean;
+      invitationPayload?: string;
     }
   | {
       kind: 'invited' | 'returning';
@@ -310,11 +311,12 @@ export function ArrivalVeil({
           <div>
             <p className="arrival-kicker">{state.roomName}</p>
             <h2 id={titleId} tabIndex={-1} data-initial-focus>Your room is ready.</h2>
-            <p id={descriptionId}>Nothing has been sent yet.</p>
+            <p id={descriptionId}>Invite someone, then enter. Inside, name one finish line and start the shared timer.</p>
             <div className="arrival-actions arrival-actions-stack">
-              <button className="arrival-primary" type="button" onClick={() => { void onCopyInvitation?.(); }} disabled={state.copying}>{state.copied ? <Check size={16} /> : <Copy size={16} />}{state.copying ? 'Copying…' : state.copied ? 'Invitation copied' : 'Copy invitation'}</button>
-              <button className="arrival-secondary" type="button" onClick={onEnterCreatedRoom}>Enter the room</button>
+              <button className="arrival-primary" type="button" onClick={() => { void onCopyInvitation?.(); }} disabled={state.copying}>{state.copied ? <Check size={16} /> : <Copy size={16} />}{state.copying ? 'Creating invitation…' : state.copied ? 'Invitation copied' : 'Copy invitation'}</button>
+              <button className="arrival-secondary" type="button" onClick={onEnterCreatedRoom}>{state.invitationPayload ? 'Enter the room' : 'Enter without inviting'}</button>
             </div>
+            {state.invitationPayload && <label className="arrival-invitation-ready">Invitation ready<textarea readOnly value={state.invitationPayload} onFocus={(event) => event.currentTarget.select()} /><small>If copying is unavailable, select and copy this invitation.</small></label>}
             <span className="arrival-live" aria-live="polite">{state.copied ? 'Invitation copied.' : ''}</span>
           </div>
         )}

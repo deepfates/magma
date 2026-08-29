@@ -79,6 +79,10 @@
 .arrival-veil form > small { display: block; margin-top: 9px; color: #8a8d86; text-align: center; font-size: 9px; }
 .arrival-error { color: #efaaa0; font-size: 11px; line-height: 1.4; }
 .arrival-live { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.arrival-invitation-ready { display: grid; gap: 6px; margin-top: 16px; color: #9c9d98; font-size: 10px; }
+.arrival-invitation-ready textarea { min-height: 88px; resize: vertical; padding: 9px 10px; border: 1px solid rgba(241, 240, 235, .16); border-radius: 4px; outline: 0; color: #f1f0eb; background: #0c0e0d; font: 9px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.arrival-invitation-ready textarea:focus-visible { border-color: #d9f0a8; outline: 2px solid #f4d58d; outline-offset: 2px; }
+.arrival-invitation-ready small { color: #8a8d86; line-height: 1.4; }
 
 .arrival-reconnecting {
   position: fixed;

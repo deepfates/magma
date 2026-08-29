@@ -39,20 +39,19 @@ test('a private room bootstraps one owner, enrolls by separated code, returns by
   await expect(owner.getByRole('heading', {name: 'Make a room'})).toBeVisible();
   await owner.getByLabel('Name', {exact: true}).fill('Ada');
   await owner.getByRole('button', {name: 'Create room'}).click();
-  await expect(owner.getByText('you hold the room tempo')).toBeVisible();
-  await owner.getByRole('button', {name: 'Room', exact: true}).click();
-  await expect(owner.getByText('Invitation only')).toBeVisible();
-  await expect(owner.locator('.room-access').getByText('owner', {exact: true})).toBeVisible();
-  const quickInvite = owner.locator('.room-editor').getByRole('button', {name: 'Invite'});
-  await quickInvite.click();
+  await expect(owner.getByRole('heading', {name: 'Your room is ready.'})).toBeVisible();
+  await expect(owner.getByRole('button', {name: 'Enter without inviting'})).toBeVisible();
+  await owner.getByRole('button', {name: 'Copy invitation'}).click();
   await expect.poll(() => invitationFrames).toContain('sent:access.invite.create');
   await expect.poll(() => invitationFrames.some((frame) => frame.startsWith('received:access.invite.'))).toBe(true);
   expect(invitationFrames).toContain('received:access.invite.created');
-  const preparedInvitation = owner.getByLabel('Prepared invitation').locator('textarea');
-  await expect(preparedInvitation).toBeVisible();
-  const firstPayload = await preparedInvitation.inputValue();
+  const arrivalInvitation = owner.locator('.arrival-invitation-ready textarea');
+  await expect(arrivalInvitation).toBeVisible();
+  const firstPayload = await arrivalInvitation.inputValue();
   const firstInvitation = parseInvitation(firstPayload);
   expect(firstInvitation.roomUrl).not.toContain(firstInvitation.capability);
+  await owner.getByRole('button', {name: 'Enter the room'}).click();
+  await expect(owner.getByText('you hold the room tempo')).toBeVisible();
 
   const member = await memberContext.newPage();
   member.on('websocket', (socket) => socketUrls.push(socket.url()));
@@ -63,6 +62,7 @@ test('a private room bootstraps one owner, enrolls by separated code, returns by
   await member.getByRole('button', {name: 'Enter quietly'}).click();
   await expect(member.getByText('Ada holds the tempo')).toBeVisible();
   await expect(member).not.toHaveURL(new RegExp(firstInvitation.capability.replaceAll('.', '\\.')));
+  await owner.getByRole('button', {name: 'Room', exact: true}).click();
   await expect(owner.getByText('2 people')).toBeVisible();
 
   await owner.reload();
@@ -83,6 +83,7 @@ test('a private room bootstraps one owner, enrolls by separated code, returns by
 
   await owner.locator('.room-access-role-select select').selectOption('guest');
   const guestInvite = owner.locator('.room-access-actions').getByRole('button', {name: 'Create invitation'});
+  const preparedInvitation = owner.getByLabel('Prepared invitation').locator('textarea');
   await guestInvite.click();
   await expect.poll(() => preparedInvitation.inputValue()).not.toBe(firstPayload);
   const guestInvitation = parseInvitation(await preparedInvitation.inputValue());
