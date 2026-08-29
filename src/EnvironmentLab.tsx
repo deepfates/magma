@@ -34,15 +34,15 @@ export function EnvironmentLab({backdrop, audio}: {
 
   return (
     <div className="environment-lab">
-      <div className="surface-section-heading"><strong>Room view</strong><small>{backdrop.canControl ? 'You hold the shared view for everyone in this room.' : 'The room host holds the shared view.'}</small></div>
+      <div className="surface-section-heading"><strong>Room view</strong><small>{backdrop.canShare ? 'Everyone here can steer the shared view.' : 'Reconnect to steer the shared view.'}</small></div>
       <div className="scene-list">
         {SCENE_PRESETS.map((scene) => (
-          <button disabled={!backdrop.canControl} className={backdrop.source.id === scene.id ? 'scene-option selected' : 'scene-option'} key={scene.id} onClick={() => backdrop.useSource(scene)}>
+          <button disabled={!backdrop.canShare} className={backdrop.source.id === scene.id ? 'scene-option selected' : 'scene-option'} key={scene.id} onClick={() => backdrop.useSource(scene)}>
             <span><Radio size={12} /> LIVE</span><strong>{scene.label.replace(' · live', '')}</strong><small>{scene.description}</small>
           </button>
         ))}
       </div>
-      <div className="custom-scene"><input disabled={!backdrop.canControl} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && apply()} placeholder="YouTube video or playlist URL" aria-label="YouTube video or playlist URL" /><button disabled={!backdrop.canControl} onClick={apply}>Set for room</button></div>
+      <div className="custom-scene"><input disabled={!backdrop.canShare} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && apply()} placeholder="YouTube video or playlist URL" aria-label="YouTube video or playlist URL" /><button disabled={!backdrop.canShare} onClick={apply}>Set for room</button></div>
       {backdrop.error && <small className="backdrop-error" role="alert">{backdrop.error}</small>}
       <div className="inline-controls">
         <button onClick={() => setWindowOpen(!(backdrop.enabled && !backdrop.reducedSensory))}>{backdrop.enabled && !backdrop.reducedSensory ? <Eye size={14} /> : <EyeOff size={14} />}{backdrop.enabled && !backdrop.reducedSensory ? 'Close live view' : 'Open selected view'}</button>

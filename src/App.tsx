@@ -173,7 +173,7 @@ function App() {
   const session = useRoom(room);
   const milliseconds = useClock(session.remaining);
   const audio = useAmbientAudio();
-  const backdrop = useYouTubeBackdrop(session.media.source, (source) => session.mediaCommand({type: 'source', source}), session.connected && session.isHost);
+  const backdrop = useYouTubeBackdrop(session.media.source, (source) => session.mediaCommand({type: 'source', source}), session.connected);
   const ritual = useBlockRitual();
   const assist = useFocusAssist(session.timer.status === 'running', session.completion, audio.playChime);
   const [copied, setCopied] = useState(false);
@@ -221,7 +221,7 @@ function App() {
   return (
     <main className={`instrument-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''} ${playerMode ? 'player-mode' : ''}`}>
       <section className="media-stage" aria-label="Living view">
-        <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canControl={session.connected && session.isHost} muted={backdrop.muted} />
+        <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canShare={session.connected} muted={backdrop.muted} />
         {(!backdrop.enabled || backdrop.reducedSensory) && <div className="quiet-field">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />}<span>{backdrop.reducedSensory ? 'Quiet field' : 'Lava field'}</span></div>}
       </section>
 

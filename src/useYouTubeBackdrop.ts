@@ -19,7 +19,7 @@ const load = (): Settings => {
   }
 };
 
-export const useYouTubeBackdrop = (source: YouTubeSource, setSharedSource: (source: YouTubeSource) => void, canControl: boolean) => {
+export const useYouTubeBackdrop = (source: YouTubeSource, setSharedSource: (source: YouTubeSource) => void, canShare: boolean) => {
   const [settings, setSettingsState] = useState<Settings>(load);
   const [error, setError] = useState('');
   const setSettings = (next: Settings | ((current: Settings) => Settings)) => {
@@ -36,13 +36,11 @@ export const useYouTubeBackdrop = (source: YouTubeSource, setSharedSource: (sour
       return false;
     }
     setError('');
-    setSettings((current) => ({...current, enabled: true, reducedSensory: false}));
     setSharedSource(source);
     return true;
   };
   const useDefault = () => {
     setError('');
-    setSettings((current) => ({...current, enabled: true, reducedSensory: false}));
     setSharedSource(TREASURE_ISLAND);
   };
   const embedUrl = useMemo(
@@ -53,7 +51,7 @@ export const useYouTubeBackdrop = (source: YouTubeSource, setSharedSource: (sour
     ...settings,
     source,
     error,
-    canControl,
+    canShare,
     embedUrl,
     setEnabled: (enabled: boolean) => setSettings((current) => ({...current, enabled})),
     setMuted: (muted: boolean) => setSettings((current) => ({...current, muted})),
@@ -61,7 +59,6 @@ export const useYouTubeBackdrop = (source: YouTubeSource, setSharedSource: (sour
     setReducedSensory: (reducedSensory: boolean) => setSettings((current) => ({...current, reducedSensory})),
     useSource: (source: YouTubeSource) => {
       setError('');
-      setSettings((current) => ({...current, enabled: true, reducedSensory: false}));
       setSharedSource(source);
     },
     useInput,

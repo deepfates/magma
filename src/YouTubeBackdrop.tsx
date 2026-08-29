@@ -44,14 +44,14 @@ const loadApi = () => {
   return apiPromise;
 };
 
-export function YouTubeBackdrop({enabled, embedUrl, title, media, roomNow, onCommand, canControl, muted}: {
+export function YouTubeBackdrop({enabled, embedUrl, title, media, roomNow, onCommand, canShare, muted}: {
   enabled: boolean;
   embedUrl: string;
   title: string;
   media: RoomMediaState;
   roomNow: () => number;
   onCommand: (command: MediaCommand) => void;
-  canControl: boolean;
+  canShare: boolean;
   muted: boolean;
 }) {
   const iframe = useRef<HTMLIFrameElement>(null);
@@ -59,14 +59,14 @@ export function YouTubeBackdrop({enabled, embedUrl, title, media, roomNow, onCom
   const mediaRef = useRef(media);
   const roomNowRef = useRef(roomNow);
   const commandRef = useRef(onCommand);
-  const canControlRef = useRef(canControl);
+  const canShareRef = useRef(canShare);
   const mutedRef = useRef(muted);
   const suppressUntil = useRef(0);
   const generation = useRef(0);
   mediaRef.current = media;
   roomNowRef.current = roomNow;
   commandRef.current = onCommand;
-  canControlRef.current = canControl;
+  canShareRef.current = canShare;
   mutedRef.current = muted;
 
   useEffect(() => {
@@ -85,9 +85,9 @@ export function YouTubeBackdrop({enabled, embedUrl, title, media, roomNow, onCom
             suppressUntil.current = Date.now() + 1_800;
           },
           onStateChange: ({target, data}) => {
-            const shared = mediaRef.current;
-            const reportable = data === 1 || data === 2 || (data === 0 && shared.source.kind === 'video' && !isKnownLiveSource(shared.source));
-            if (disposed || currentGeneration !== generation.current || !canControlRef.current || Date.now() < suppressUntil.current || !reportable) return;
+            const reportable = data === 1 || data === 2;
+            const deliberate = document.activeElement === iframe.current;
+            if (disposed || currentGeneration !== generation.current || !canShareRef.current || !deliberate || Date.now() < suppressUntil.current || !reportable) return;
             const positionSeconds = Math.max(0, target.getCurrentTime() || 0);
             const playlistIndex = Math.max(0, target.getPlaylistIndex() || 0);
             commandRef.current({type: data === 1 ? 'play' : 'pause', positionSeconds, playlistIndex});

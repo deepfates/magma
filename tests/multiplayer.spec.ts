@@ -135,31 +135,37 @@ test('the room view converges while personal media preferences stay local', asyn
   expect(geometry.height).toBe(await host.evaluate(() => innerHeight));
 
   await follower.getByRole('button', {name: 'Environment'}).click();
-  await expect(follower.getByRole('button', {name: /ABC7 Treasure Island/})).toBeDisabled();
+  await expect(follower.getByText('Everyone here can steer the shared view.')).toBeVisible();
+  await follower.getByRole('button', {name: /ABC7 Treasure Island/}).click();
+  await expect(hostFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
+  await expect(followerFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
   await followerFrame.evaluate((element) => { element.dataset.identity = 'retained'; });
   await follower.getByRole('button', {name: 'Camera muted'}).click();
   expect(await followerFrame.getAttribute('data-identity')).toBe('retained');
 
   await host.getByRole('button', {name: 'Environment'}).click();
-  await host.getByRole('button', {name: /ABC7 Treasure Island/}).click();
-  await expect(hostFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
-  await expect(followerFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
+  await host.getByRole('button', {name: /TrazCam Bay Life/}).click();
+  await expect(hostFrame).toHaveAttribute('src', /E_kvIXtF_yo/);
+  await expect(followerFrame).toHaveAttribute('src', /E_kvIXtF_yo/);
 
   await host.getByLabel('YouTube video or playlist URL').fill('https://www.youtube.com/playlist?list=PL1234567890abc');
   await host.getByRole('button', {name: 'Set for room'}).click();
   await expect(hostFrame).toHaveAttribute('src', /embed\/videoseries/);
   await expect(followerFrame).toHaveAttribute('src', /list=PL1234567890abc/);
-  expect(await host.evaluate(() => JSON.parse(localStorage.getItem('magma:youtube-backdrop:v2') ?? '{}').muted)).toBe(true);
+  expect(await host.evaluate(() => JSON.parse(localStorage.getItem('magma:youtube-backdrop:v2') ?? '{}').muted ?? true)).toBe(true);
   expect(await follower.evaluate(() => JSON.parse(localStorage.getItem('magma:youtube-backdrop:v2') ?? '{}').muted)).toBe(false);
   expect(await host.evaluate(() => 'source' in JSON.parse(localStorage.getItem('magma:youtube-backdrop:v2') ?? '{}'))).toBe(false);
 
   await follower.getByRole('button', {name: 'Quiet everything'}).click();
   await expect(followerFrame).toHaveCount(0);
   await expect(hostFrame).toHaveAttribute('src', /list=PL1234567890abc/);
+  await follower.getByRole('button', {name: /Earth from the ISS/}).click();
+  await expect(hostFrame).toHaveAttribute('src', /sWasdbDVNvc/);
+  await expect(followerFrame).toHaveCount(0);
   await follower.getByRole('button', {name: 'Open selected view'}).click();
-  await expect(followerFrame).toHaveAttribute('src', /list=PL1234567890abc/);
+  await expect(followerFrame).toHaveAttribute('src', /sWasdbDVNvc/);
   await follower.reload();
-  await expect(followerFrame).toHaveAttribute('src', /list=PL1234567890abc/);
+  await expect(followerFrame).toHaveAttribute('src', /sWasdbDVNvc/);
 
   await host.getByRole('button', {name: 'Camera controls'}).click();
   await expect(host.getByRole('button', {name: 'Return to instrument'})).toBeVisible();

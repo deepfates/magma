@@ -10,12 +10,12 @@ Magma is a multiplayer focus instrument: a living view, a server-authoritative c
 - A room is named by `?room=...`; the Invite button copies the join link.
 - PartyKit owns the canonical timer state. Server alarms settle elapsed phases exactly once; clients derive the display from a sampled server-time offset instead of broadcasting every second.
 - PartyKit separately owns the canonical room-media state: source, playback intent, position anchor, playlist index, controller, and revision. The YouTube IFrame API projects that state locally and corrects material VOD drift without feeding remote corrections back into the room.
-- The first member present holds room authority across all of their tabs. Everyone else can propose a timer change; the host can approve it or pass the crown, and host loss triggers a deterministic handoff. Only the host steers shared media.
+- The first member present holds timer authority across all of their tabs. Everyone else can propose a timer change; the host can approve it or pass the crown, and host loss triggers a deterministic handoff. Shared media is democratic: every connected participant can steer it.
 - Focus completion creates a durable room “ember,” sounds a synthesized local chime, and can automatically begin the shared break. The latest 24 artifacts survive reloads.
 - People have stable local profiles and intentions. Tasks support ownership, while CRDT note cards (“sparks”) let the room communicate without breaking focus.
 - Tasks and sparks live in a TinyBase `MergeableStore`, persist to IndexedDB, and synchronize through the same room. Server-side schemas, message caps, and rate limits constrain writes.
 - Warm noise is synthesized locally with Web Audio. Wake Lock and opt-in completion notifications are progressive enhancements; no audio assets or tracking services are bundled.
-- A dominant living view opens on the Treasure Island panorama from Mersea/Teleport and also accepts ABC7’s Treasure Island camera, TrazCam, NASA’s ISS feed, and standard YouTube video or playlist links. The host-selected source converges across browsers and survives reconnects. Instrument mode cover-crops the embed; Camera Controls clears the instrument and exposes shared playback controls.
+- A dominant living view opens on the Treasure Island panorama from Mersea/Teleport and also accepts ABC7’s Treasure Island camera, TrazCam, NASA’s ISS feed, and standard YouTube video or playlist links. Any participant can change the shared source or transport; it converges across browsers and survives reconnects. Instrument mode cover-crops the embed; Camera Controls clears the instrument and exposes shared playback controls.
 - The shared clock and four stable surfaces—Workspace, Environment, Tempo, and Room—are inscribed over the living view. The clock remains reachable while a surface is open; surface drafts and shared state survive responsive posture changes.
 - Environment makes the authority boundary visible: source and playback belong to the room; mute, visibility, synthesized warm noise, cue preferences, and sensory reduction stay on the individual device and never enter the room snapshot or CRDT.
 - Before a focus Block, a person can name one visible finish line and expand a disposable three-item “Right Now” list. Afterward they decide whether the interval was clean and finish-directed; the daily tally counts that decision exactly once, resets each day, and never becomes a streak or leaderboard.
@@ -53,7 +53,7 @@ Open the same URL (including its `?room=` value) in two browser windows. The web
 npm run check
 ```
 
-This runs timer/media state-machine and YouTube URL tests, TypeScript, a production build, and real Chromium multiplayer tests covering authority across tabs, CRDT convergence, reconnect durability, host handoff, server-alarm completion, one-time Block accounting, two-browser media convergence, personal-preference isolation, surface continuity across posture changes, phone layout, and automated accessibility checks.
+This runs timer/media state-machine and YouTube URL tests, TypeScript, a production build, and real Chromium multiplayer tests covering timer authority across tabs, CRDT convergence, reconnect durability, host handoff, server-alarm completion, one-time Block accounting, two-way media control and convergence, personal-preference isolation, surface continuity across posture changes, phone layout, and automated accessibility checks.
 
 ## Put rooms online
 

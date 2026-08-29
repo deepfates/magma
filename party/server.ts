@@ -50,6 +50,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   private hostMemberId: string | null = null;
   private proposal: TimerProposal | null = null;
   private messageTimes = new Map<string, number[]>();
+  private mediaQueue: Promise<void> = Promise.resolve();
 
   constructor(readonly room: Party.Room) {
     super(room);
@@ -135,21 +136,22 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     }
 
     if (parsed.type === 'media.command') {
-      if (!this.isHost(connection)) {
-        connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'The room host controls the shared view.'}));
-        return;
-      }
-      if (parsed.expectedRevision !== this.media.revision) {
-        connection.send(JSON.stringify(this.snapshot()));
-        return;
-      }
-      const command = parsed.command.type === 'source'
-        ? {...parsed.command, source: this.canonicalSource(parsed.command.source)}
-        : parsed.command;
-      const next = applyMediaCommand(this.media, command, Date.now(), participant.memberId);
-      await this.room.storage.put(MEDIA_KEY, next);
-      this.media = next;
-      this.broadcastSnapshot();
+      const operation = this.mediaQueue.then(async () => {
+        if (parsed.expectedRevision !== this.media.revision) {
+          connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'The shared view changed—try that again.'}));
+          connection.send(JSON.stringify(this.snapshot()));
+          return;
+        }
+        const command = parsed.command.type === 'source'
+          ? {...parsed.command, source: this.canonicalSource(parsed.command.source)}
+          : parsed.command;
+        const next = applyMediaCommand(this.media, command, Date.now(), participant.memberId);
+        await this.room.storage.put(MEDIA_KEY, next);
+        this.media = next;
+        this.broadcastSnapshot();
+      });
+      this.mediaQueue = operation.catch(() => undefined);
+      await operation;
       return;
     }
 
