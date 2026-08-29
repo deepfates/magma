@@ -6,12 +6,15 @@ const blockRemoteMedia = (context: BrowserContext) => context.route(
 );
 
 const addNote = async (page: Page, text: string, x = 300, y = 260) => {
-  const canvas = page.locator('.tl-canvas[data-testid="canvas"]');
+  const engine = page.locator('.porch-canvas-engine');
+  const canvas = page.locator('canvas.excalidraw__canvas.interactive');
+  await expect(engine).toHaveAttribute('data-connection', 'open');
   await expect(canvas).toBeVisible();
   await page.getByRole('button', {name: 'Note', exact: true}).click();
   await canvas.click({position: {x, y}});
   await page.keyboard.type(text);
   await page.keyboard.press('Escape');
+  await expect.poll(async () => JSON.parse(await engine.getAttribute('data-scene') || '[]').some((element: {text?: string}) => element.text === text)).toBe(true);
 };
 
 const parseInvitation = (text: string) => {
@@ -45,6 +48,9 @@ test('a porch opens by invitation, returns by device proof, and every person can
   expect(firstInvitation.roomUrl).not.toContain(firstInvitation.capability);
   await owner.getByRole('button', {name: 'Enter the porch'}).click();
   await expect(owner.getByRole('button', {name: /The Porch/})).toBeVisible();
+  await expect(owner.locator('.porch-canvas-engine')).toHaveAttribute('data-connection', 'open');
+  await owner.waitForTimeout(8_000);
+  await expect(owner.locator('canvas.excalidraw__canvas.interactive')).toBeVisible();
 
   const friend = await friendContext.newPage();
   await enterInvitation(friend, firstInvitation, 'Lin');
@@ -61,7 +67,7 @@ test('a porch opens by invitation, returns by device proof, and every person can
   await expect(owner.getByRole('button', {name: /3 here/})).toBeVisible();
 
   await addNote(third, 'Everyone can leave something here');
-  await expect(owner.locator('.tl-shape[data-shape-type="note"]')).toContainText('Everyone can leave something here');
+  await expect.poll(async () => JSON.parse(await owner.locator('.porch-canvas-engine').getAttribute('data-scene') || '[]').some((element: {text?: string}) => element.text === 'Everyone can leave something here')).toBe(true);
 
   await Promise.all([ownerContext.close(), friendContext.close(), thirdContext.close()]);
 });

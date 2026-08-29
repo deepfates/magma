@@ -1,6 +1,5 @@
 import type * as Party from 'partykit/server';
-import {InMemorySyncStorage, TLSocketRoom, type RoomSnapshot, type WebSocketMinimal} from '@tldraw/sync-core';
-import {createTLSchema, defaultBindingSchemas, defaultShapeSchemas, type TLRecord} from '@tldraw/tlschema';
+import * as Y from 'yjs';
 import {
   TRUSTED_DEVICE_HEADER,
   TRUSTED_MEMBER_HEADER,
@@ -8,9 +7,8 @@ import {
   validateAdmissionBeforeConnect,
 } from '../party/access';
 
-const SNAPSHOT_KEY = 'porch:tldraw-snapshot:v1';
+const SNAPSHOT_KEY = 'porch:excalidraw-yjs:v1';
 const DEFAULT_ALLOWED_ORIGINS = ['https://magma-one-azure.vercel.app', 'http://localhost:5173', 'http://127.0.0.1:5173'];
-const schema = createTLSchema({shapes: defaultShapeSchemas, bindings: defaultBindingSchemas});
 
 const allowedOrigins = (env: Record<string, unknown>) => new Set([
   ...DEFAULT_ALLOWED_ORIGINS,
@@ -25,11 +23,19 @@ const cleanRequest = (request: Party.Request) => {
   return new Request(request.url, {method: request.method, headers}) as Party.Request;
 };
 
-const socketFor = (connection: Party.Connection): WebSocketMinimal => ({
-  send: (message) => connection.send(message),
-  close: (code, reason) => connection.close(code, reason),
-  get readyState() { return connection.readyState; },
-});
+const encodeUpdate = (update: Uint8Array) => {
+  let binary = '';
+  for (let offset = 0; offset < update.byteLength; offset += 0x8000) {
+    binary += String.fromCharCode(...update.subarray(offset, offset + 0x8000));
+  }
+  return JSON.stringify({type: 'scene.update', update: btoa(binary)});
+};
+
+const decodeUpdate = (value: unknown) => {
+  if (!value || typeof value !== 'object' || (value as {type?: unknown}).type !== 'scene.update' || typeof (value as {update?: unknown}).update !== 'string') return null;
+  const binary = atob((value as {update: string}).update);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+};
 
 export default class PorchCanvasRoom implements Party.Server {
   static async onBeforeConnect(request: Party.Request, lobby: Party.Lobby): Promise<Party.Request | Response> {
@@ -48,59 +54,40 @@ export default class PorchCanvasRoom implements Party.Server {
     return validateAdmissionBeforeConnect(clean, lobby, {partyName: 'main', internalSecret: secret}) as Promise<Party.Request | Response>;
   }
 
-  private sync: TLSocketRoom<TLRecord, void> | null = null;
-  private sessions = new Map<string, string>();
+  private readonly document = new Y.Doc();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(readonly room: Party.Room) {}
 
   async onStart() {
-    const snapshot = await this.room.storage.get<RoomSnapshot>(SNAPSHOT_KEY);
-    let storage: InMemorySyncStorage<TLRecord>;
-    storage = new InMemorySyncStorage<TLRecord>({
-      ...(snapshot ? {snapshot} : {}),
-      onChange: () => this.schedulePersist(storage),
-    });
-    this.sync = new TLSocketRoom<TLRecord, void>({schema, storage, clientTimeout: 30_000});
+    const snapshot = await this.room.storage.get<Uint8Array>(SNAPSHOT_KEY);
+    if (snapshot?.byteLength) Y.applyUpdateV2(this.document, snapshot, 'storage');
   }
 
-  onConnect(connection: Party.Connection, context: Party.ConnectionContext) {
-    const sessionId = new URL(context.request.url).searchParams.get('sessionId') || connection.id;
-    this.sessions.set(connection.id, sessionId);
-    this.getSync().handleSocketConnect({sessionId, socket: socketFor(connection)});
+  onConnect(connection: Party.Connection) {
+    connection.send(encodeUpdate(Y.encodeStateAsUpdateV2(this.document)));
   }
 
   onMessage(message: string | ArrayBuffer | ArrayBufferView, connection: Party.Connection) {
-    const sessionId = this.sessions.get(connection.id);
-    if (sessionId) this.getSync().handleSocketMessage(sessionId, message);
+    if (typeof message !== 'string' || message.length > 6_800_000) return;
+    try {
+      const update = decodeUpdate(JSON.parse(message));
+      if (!update || update.byteLength > 5_000_000) return;
+      Y.applyUpdateV2(this.document, update, connection.id);
+      this.room.broadcast(message, [connection.id]);
+      this.schedulePersist();
+    } catch {
+      connection.close(1003, 'Invalid canvas message');
+    }
   }
 
-  onClose(connection: Party.Connection) {
-    const sessionId = this.sessions.get(connection.id);
-    if (!sessionId) return;
-    this.sessions.delete(connection.id);
-    this.getSync().handleSocketClose(sessionId);
-    void this.persist();
-  }
+  onClose() { void this.persist(); }
 
-  onError(connection: Party.Connection) {
-    const sessionId = this.sessions.get(connection.id);
-    if (!sessionId) return;
-    this.sessions.delete(connection.id);
-    this.getSync().handleSocketError(sessionId);
-    void this.persist();
-  }
-
-  private getSync() {
-    if (!this.sync) throw new Error('Canvas room started without its tldraw engine');
-    return this.sync;
-  }
-
-  private schedulePersist(storage: InMemorySyncStorage<TLRecord>) {
+  private schedulePersist() {
     if (this.persistTimer) clearTimeout(this.persistTimer);
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null;
-      void this.room.storage.put(SNAPSHOT_KEY, storage.getSnapshot());
+      void this.persist();
     }, 250);
   }
 
@@ -109,7 +96,6 @@ export default class PorchCanvasRoom implements Party.Server {
       clearTimeout(this.persistTimer);
       this.persistTimer = null;
     }
-    const snapshot = this.sync?.storage.getSnapshot?.();
-    if (snapshot) await this.room.storage.put(SNAPSHOT_KEY, snapshot);
+    await this.room.storage.put(SNAPSHOT_KEY, Y.encodeStateAsUpdateV2(this.document));
   }
 }

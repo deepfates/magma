@@ -97,7 +97,7 @@ export default function App() {
               : access.session.kind === 'admitted' && justCreated
                 ? {kind: 'creating', step: 'ready', roomName: 'Your porch', copying: false, copied, invitationPayload}
                 : {kind: 'admitted', roomName: room, role: 'member'};
-  const porchAdmitted = legacyAccess || access.session.kind === 'admitted';
+  const porchAdmitted = legacyAccess || (access.session.kind === 'admitted' && !justCreated);
 
   return <>
     <main className={`porch-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''}`} ref={backgroundRef} data-arrival-background>
@@ -115,12 +115,12 @@ export default function App() {
       </section>
 
       <header className="porch-header">
-        <button className="porch-place" onClick={() => setTunerOpen((open) => !open)} aria-expanded={tunerOpen}>
+        <button className="porch-place" onClick={() => { setTunerOpen((open) => !open); setPeopleOpen(false); }} aria-expanded={tunerOpen}>
           <span className="porch-mark">P</span><span><strong>The Porch</strong><small>{backdrop.enabled && !backdrop.reducedSensory ? backdrop.source.label.replace(' · live', '') : backdrop.reducedSensory ? 'Quiet window' : 'Glow window'} · change the view</small></span>
         </button>
         <div className="porch-company">
           <button aria-label={glassVisible ? 'Glass on' : 'Glass off'} onClick={() => setGlassVisible((visible) => !visible)} aria-pressed={glassVisible}>{glassVisible ? <Eye size={16} /> : <EyeOff size={16} />}<span>{glassVisible ? 'Glass on' : 'Glass off'}</span></button>
-          <button aria-label={`${session.participants.length || 0} here`} onClick={() => setPeopleOpen((open) => !open)} aria-expanded={peopleOpen}><Users size={16} /><span>{session.participants.length || '—'} here</span></button>
+          <button aria-label={`${session.participants.length || 0} here`} onClick={() => { setPeopleOpen((open) => !open); setTunerOpen(false); }} aria-expanded={peopleOpen}><Users size={16} /><span>{session.participants.length || '—'} here</span></button>
           <button aria-label={copied ? 'Invitation copied' : 'Invite'} className="invite-button" onClick={() => void share()}>{copied ? <Check size={15} /> : <Copy size={15} />}<span>{copied ? 'Copied' : 'Invite'}</span></button>
         </div>
       </header>
@@ -145,7 +145,7 @@ export default function App() {
 
       <nav className="porch-tools" aria-label="Things to use on the porch">
         {([{id: 'select', label: 'Move', icon: <Hand size={19} />}, {id: 'draw', label: 'Draw', icon: <PenLine size={19} />}, {id: 'note', label: 'Note', icon: <StickyNote size={19} />} ] as const).map((item) => <button key={item.id} className={tool === item.id ? 'active' : ''} aria-pressed={tool === item.id} onClick={() => setTool(item.id)}>{item.icon}<span>{item.label}</span></button>)}
-        <button onClick={() => setPeopleOpen(true)}><MessageCircle size={19} /><span>Talk</span></button>
+        <button onClick={() => { setPeopleOpen(true); setTunerOpen(false); }}><MessageCircle size={19} /><span>Talk</span></button>
       </nav>
       <div className="porch-connection"><span className={session.connected ? 'online' : ''} />{session.connected ? 'together' : 'reconnecting'}</div>
       <div className="room-live" aria-live="polite">{session.notice}</div>
