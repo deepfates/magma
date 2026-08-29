@@ -182,9 +182,9 @@ Production has reproducible client and room deployment, source health/fallback b
 
 - Production room creation, invitation, device return, presence count, and equal invitation.
 - Full-window Treasure Island and curated YouTube live sources, arbitrary YouTube video/playlist parsing, native Glow, and Quiet.
-- Shared media source/transport state and a server-owned media queue model.
-- Excalidraw/Yjs glass with notes, freehand drawing, selection, movement, deletion, local undo mechanics, convergence, and persistence.
-- Shared clock start, pause, and reset.
+- A compositional shared scene with one YouTube visual, independent KEXP radio, daylight overlay, declared attribution/capability/health/fallback metadata, and local mute, volume, overlay visibility, and sensory choices.
+- Excalidraw/Yjs glass with notes, freehand drawing, selection, movement, deletion, local undo mechanics, convergence, persistence, ephemeral server-bound collaborators, and follow-view controls.
+- Shared clock start, pause, and reset plus an optional Block instrument for one thing, a finish line, one-to-three disposable Right Now moves, per-person durable plans, and break/repeat/prepare-next transitions.
 - Durable room chat and personal glass, video mute, Glow/Quiet, and warm-noise choices.
 - Versioned authoritative room-state storage with atomic migration from existing production keys, an exact rollback backup, legacy dual-write, and visible no-write rejection of unknown future schemas.
 
@@ -194,6 +194,9 @@ Production has reproducible client and room deployment, source health/fallback b
 - Protected-room creation, invitation, device-proof return, invitation by a second person, and a third person's convergent note.
 - Repeated forced protected-canvas socket reconnect obtains a distinct one-time admission ticket, retains the same two-person presence and scene, and permits one subsequent edit from each person without duplicate elements.
 - Either person starts and pauses the clock, changes the selected YouTube source, adds a playlist URL, and writes durable chat.
+- Two browsers independently change visual, radio, and overlays without remounting unrelated layers, converge after reload, and retain distinct local radio/overlay/sensory choices.
+- Two people prepare and observe a Block, start the common 25-minute clock, and keep durable conversation open during focus.
+- Protected two-person canvas presence exercises server-stamped names/colors, cursor, selection, drawing/typing posture, follow and local exit, one active pointer across same-identity tabs, forged-identity rejection, disconnect cleanup, reload non-persistence, and reduced motion.
 - One person's glass visibility, mute, and Glow choice remain local; same-device tabs retain accepted chat.
 - A 390x844 browser creates a note without document overflow; the surrounding primary controls pass the retained automated accessibility inspection.
 - Provider media is blocked in the deterministic journeys, so those checks prove synchronized intent and embed URLs, not actual external playback, live availability, playlist transport, or autoplay recovery.
@@ -202,16 +205,16 @@ Production has reproducible client and room deployment, source health/fallback b
 
 - The queue supports add, reorder, remove, stage, and select in domain/server code, but the current one-screen tuner exposes only immediate add/select.
 - Reactions, presence choices, session cues, Block aims, ambient cue controls, and richer focus machinery remain in code from earlier versions but are not composed into the current Porch.
-- Media sync exists for YouTube intent, but there is no general scene model, radio layer, overlay layer, health model, or source adapter contract.
-- Excalidraw supplies more object mechanics than the Porch shelf exposes; live collaborator cursors, durable asset handling, links/documents, and Porch-level restore/export are unfinished.
+- Scene adapters declare health and fallback, but there is no active provider health probe, broader radio discovery, or general source recovery orchestration yet.
+- Excalidraw supplies more object mechanics than the Porch shelf exposes; durable asset handling, links/documents, and Porch-level restore/export are unfinished.
 - Physical network-loss recovery remains unexercised because Chromium offline emulation did not close an already-established websocket; deterministic page-side websocket closure proves the reconnect path itself.
 - Freehand drawing, multiplayer undo ownership, pan/zoom continuity, canvas accessibility, PartyKit actor restart recovery, and actual external media playback are implemented or plausible at engine level but not yet exercised as product claims.
 - Chat is durable but has no replies, reactions, spatial pinning, or voice.
-- The clock is synchronized but does not implement the choose/finish-line/Block/mark/break loop.
+- Completion uses the existing one-per-session artifact, but the richer sound/cue feedback layer is unfinished.
 
 ### Absent
 
-- Radio discovery/playback, Earth/satellite/orbit renderers, world-pulse overlays, and supported public web excursions.
+- Radio Garden-style discovery, Earth/satellite/orbit renderers, world-pulse overlays, and supported public web excursions.
 - Rich artifact/asset pipeline and placeable media, focus, sound, or future objects.
 - Room timeline, object restoration, scheduled future items, and saved Porch setups.
 - Integrated soundboard/local mixer and camera-free voice.

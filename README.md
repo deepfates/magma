@@ -26,16 +26,17 @@ The complete requested product space, current capability boundary, and dependenc
 
 ## Implemented now
 
-- A full-window Treasure Island view by default, with curated Bay and NASA sources, arbitrary YouTube videos/playlists, native WebGL Glow, and Quiet.
+- A full-window Treasure Island view by default, with curated Bay and NASA sources, arbitrary YouTube videos/playlists, native WebGL Glow, and Quiet. The shared scene composes that visual with independent KEXP radio and a daylight overlay while mute, volume, overlay visibility, and sensory posture remain local.
 - A real Excalidraw surface for notes, drawing, selection, manipulation, undo/history, camera behavior, and keyboard gestures.
 - A native-Yjs Excalidraw scene: the CRDT is the document model rather than a second array-shaped synchronization shim. A dedicated PartyKit canvas party merges, broadcasts, and persists its binary Yjs updates.
 - A narrow `PorchCanvas` transport adapter that supplies Porch tools and admission, removes the generic whiteboard chrome, and uses the editor's explicit local-update, remote-update, and initialization boundaries.
 - Self-hosted Excalidraw fonts copied into the production build rather than fetched from a third-party font CDN.
 - Lazy editor loading after the Porch admission threshold; the arrival surface does not import or mount the canvas engine.
-- Any admitted person can create, edit, move, and delete canvas objects; operate the clock; choose the shared media source; write in the room; and create another invitation.
+- Any admitted person can create, edit, move, and delete canvas objects; operate the clock; choose the shared media source; write in the room; and create another invitation. Ephemeral server-bound names, colors, pointers, selections, drawing/typing posture, and follow-view controls put those people directly on the glass.
 - PartyKit authorities for room admission, people/chat, the shared clock, and media intent. Wall time and playback remain outside document history because they are temporal state, not canvas edits.
 - A versioned authoritative room-state envelope migrates existing production keys atomically, retains an exact rollback backup, rejects unknown future schemas without writing, and dual-writes the legacy keys during the rollback window.
 - Local-only glass visibility, Glow/Quiet presentation, mute, volume, and synthesized warm sound.
+- An optional shared Block instrument for one thing, a finish line, one-to-three disposable Right Now moves, the common 25-minute clock, a restrained completion trace, and break/repeat/prepare-next transitions. Conversation remains available during focus.
 - Existing TinyBase task and spark tables retained for non-destructive migration. They are not a second canvas or collaboration model.
 
 ## Architecture
@@ -46,7 +47,7 @@ The design follows Interface Lab's engine-adapter idiom:
 Porch product surface
   ├─ PorchCanvas adapter ── Excalidraw editor + native Yjs scene/history
   │                         └─ binary update party + PartyKit persistence
-  └─ Porch room model ───── PartyKit clock, media, chat, admission
+  └─ Porch room model ───── PartyKit scene, Block, chat, admission
 ```
 
 The application owns room identity, product tools, media meaning, and temporal authorities. Excalidraw owns its per-property Yjs document schema, hit testing, gestures, rendering, camera, and history. Porch transports the editor's Yjs updates without inventing a second canvas model or serializing editor internals into the main room protocol.
@@ -64,8 +65,11 @@ The automated browser journeys use separate isolated Chromium contexts and real 
 - cross-browser convergence, reload persistence, and the native Yjs scene transport;
 - either person starting and pausing the shared clock;
 - either person changing the shared live window, adding a YouTube playlist, and writing in room chat while glass, mute, and atmosphere choices remain local;
+- independent shared visual/radio/overlay convergence without remounting unrelated layers, plus local radio volume, mute, overlay visibility, and reload posture;
+- two people preparing and observing a durable Block, starting its shared clock, and continuing room conversation during focus;
 - protected-room creation, invitation, device-proof return, invitation by a second person, and a third person's convergent note;
 - repeated protected-canvas socket closure, fresh one-time admission on each reconnect, retained presence and scene, and subsequent editing by both people without duplicate elements;
+- protected two-person glass presence with server-stamped identity, cursor/selection/posture updates, follow and local exit, one active pointer across same-identity tabs, prompt disconnect cleanup, reload non-persistence, and reduced-motion treatment;
 - a phone viewport and accessibility inspection of the primary Porch controls.
 
 A separate hands-on browser pass kept the canvas open for ten seconds, created a note through the visible surface, observed it in a second session, moved and deleted it from there, then created another note and verified it after reload. The complete canvas reload story was also repeated three times concurrently to falsify the initialization race that the first implementation missed.
