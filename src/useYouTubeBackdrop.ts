@@ -1,5 +1,5 @@
 import {useMemo, useState} from 'react';
-import {parseYouTubeSource, TREASURE_ISLAND, youtubeEmbedUrl, type YouTubeSource} from './domain/youtube';
+import {youtubeEmbedUrl, type YouTubeSource} from './domain/youtube';
 
 const STORAGE_KEY = 'magma:youtube-backdrop:v2';
 type Settings = {enabled: boolean; muted: boolean; lavaMix: number; reducedSensory: boolean};
@@ -19,29 +19,14 @@ const load = (): Settings => {
   }
 };
 
-export const useYouTubeBackdrop = (source: YouTubeSource, setSharedSource: (source: YouTubeSource) => void, canShare: boolean) => {
+export const useYouTubeBackdrop = (source: YouTubeSource, canShare: boolean) => {
   const [settings, setSettingsState] = useState<Settings>(load);
-  const [error, setError] = useState('');
   const setSettings = (next: Settings | ((current: Settings) => Settings)) => {
     setSettingsState((current) => {
       const value = typeof next === 'function' ? next(current) : next;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
       return value;
     });
-  };
-  const useInput = (input: string) => {
-    const source = parseYouTubeSource(input);
-    if (!source) {
-      setError('Paste a YouTube video or playlist link.');
-      return false;
-    }
-    setError('');
-    setSharedSource(source);
-    return true;
-  };
-  const useDefault = () => {
-    setError('');
-    setSharedSource(TREASURE_ISLAND);
   };
   const embedUrl = useMemo(
     () => youtubeEmbedUrl(source, true, window.location.origin),
@@ -50,18 +35,11 @@ export const useYouTubeBackdrop = (source: YouTubeSource, setSharedSource: (sour
   return {
     ...settings,
     source,
-    error,
     canShare,
     embedUrl,
     setEnabled: (enabled: boolean) => setSettings((current) => ({...current, enabled})),
     setMuted: (muted: boolean) => setSettings((current) => ({...current, muted})),
     setLavaMix: (lavaMix: number) => setSettings((current) => ({...current, lavaMix})),
     setReducedSensory: (reducedSensory: boolean) => setSettings((current) => ({...current, reducedSensory})),
-    useSource: (source: YouTubeSource) => {
-      setError('');
-      setSharedSource(source);
-    },
-    useInput,
-    useDefault,
   };
 };

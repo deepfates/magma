@@ -3,6 +3,8 @@ import MagmaRoom from '../../party/server';
 import {applyTimerCommand, createTimer, type TimerState} from './timer';
 import type {Participant, Profile, RoomSnapshot, SessionArtifact} from './protocol';
 import type {SocialRelease} from './porch';
+import type {MediaQueueState} from './mediaQueue';
+import type {RoomMediaState} from './media';
 import {createMergeableStore} from 'tinybase';
 import {contentAsChanges, decodeWorkspaceSnapshot, encodeWorkspaceChanges} from '../workspaceTransport';
 
@@ -11,6 +13,8 @@ const ARTIFACTS_KEY = 'magma:artifacts';
 const PORCH_MESSAGES_KEY = 'magma:porch-messages';
 const SOCIAL_NONCES_KEY = 'magma:social-nonces';
 const SOCIAL_RELEASE_KEY = 'magma:social-release';
+const MEDIA_KEY = 'magma:media';
+const MEDIA_QUEUE_KEY = 'magma:media-queue:v1';
 
 class FakeStorage {
   readonly values = new Map<string, unknown>();
@@ -366,6 +370,135 @@ describe('Magma room deadline and restart invariants', () => {
     }
 
     expect(room.broadcasts.filter((message) => message.type === 'reaction')).toHaveLength(24);
+  });
+});
+
+describe('server-authoritative Listening Deck', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  const source = (id: string) => ({kind: 'video' as const, id, label: `Client label ${id}`});
+  const enqueue = (opId: string, id: string, activate = false) => ({
+    type: 'media.queue.enqueue', opId, source: source(id), activate,
+  });
+
+  it('keeps concurrent enqueues once in accepted server order and makes retries idempotent', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const ada = new FakeConnection('ada-tab');
+    const lin = new FakeConnection('lin-tab');
+    await connect(server, room, ada, profile('ada-member', 'Ada'));
+    await connect(server, room, lin, profile('lin-member', 'Lin'));
+    const first = enqueue('queue-op-ada-1', 'abcdefghijk');
+    const second = enqueue('queue-op-lin-1', 'lmnopqrstuv');
+
+    await Promise.all([send(server, ada, first), send(server, lin, second)]);
+    await send(server, ada, first);
+
+    const queue = await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY);
+    expect(queue?.items.map((item) => [item.source.id, item.addedById, item.addedByName])).toEqual([
+      ['BSWhGNXxT9A', 'server', 'Room'],
+      ['abcdefghijk', 'ada-member', 'Ada'],
+      ['lmnopqrstuv', 'lin-member', 'Lin'],
+    ]);
+    expect(queue?.revision).toBe(2);
+    expect(ada.sent.filter((message) => message.type === 'media.queue.accepted')).toHaveLength(2);
+
+    const restarted = new MagmaRoom(room as never);
+    await restarted.onStart();
+    const returning = new FakeConnection('returning-tab');
+    await connect(restarted, room, returning, profile('returning-member', 'Returning'));
+    expect(latestSnapshot(returning.sent)?.mediaQueue).toMatchObject({revision: 2, policy: 'open'});
+  });
+
+  it('stages a Floor selection and activates queue plus transport exactly once at the boundary', async () => {
+    const room = new FakeRoom();
+    await room.storage.put(TIMER_KEY, runningFocus());
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const host = new FakeConnection('host-tab');
+    await connect(server, room, host, profile('host-member', 'Host'));
+
+    await send(server, host, enqueue('queue-stage-op-1', 'abcdefghijk', true));
+    const staged = await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY);
+    const mediaBefore = await room.storage.get<RoomMediaState>(MEDIA_KEY);
+    expect(staged?.stagedItemId).toBe(staged?.items[1].id);
+    expect(staged?.activeItemId).toBe(staged?.items[0].id);
+    expect(mediaBefore?.source.id).toBe('BSWhGNXxT9A');
+
+    vi.setSystemTime(31_000);
+    room.storage.failNextAtomicWrite = true;
+    await expect(server.onAlarm()).rejects.toThrow('injected atomic write failure');
+    expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({mode: 'focus', status: 'running'});
+    expect(await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY)).toMatchObject({stagedItemId: staged?.items[1].id, revision: 1});
+    expect(await room.storage.get<RoomMediaState>(MEDIA_KEY)).toMatchObject({source: {id: 'BSWhGNXxT9A'}, revision: 0});
+
+    await server.onAlarm();
+    const active = await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY);
+    const mediaAfter = await room.storage.get<RoomMediaState>(MEDIA_KEY);
+    expect(active).toMatchObject({activeItemId: staged?.items[1].id, stagedItemId: null, revision: 2});
+    expect(mediaAfter).toMatchObject({source: {id: 'abcdefghijk'}, revision: 1, positionSeconds: 0});
+
+    await server.onAlarm();
+    expect(await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY)).toMatchObject({revision: 2});
+    expect(await room.storage.get<RoomMediaState>(MEDIA_KEY)).toMatchObject({revision: 1});
+  });
+
+  it('does not adopt a queue mutation until its atomic durable write succeeds', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const member = new FakeConnection('member-tab');
+    await connect(server, room, member, profile('member-one', 'Member'));
+    const command = enqueue('queue-retry-op-1', 'abcdefghijk');
+    room.storage.failNextAtomicWrite = true;
+
+    await expect(send(server, member, command)).rejects.toThrow('injected atomic write failure');
+    expect((await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))?.items).toHaveLength(1);
+    await send(server, member, command);
+    expect((await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))?.items).toHaveLength(2);
+  });
+
+  it('enforces open/stewarded roles and does not let legacy source commands bypass the deck', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const owner = new FakeConnection('owner-tab');
+    const member = new FakeConnection('member-tab');
+    const steward = new FakeConnection('steward-tab');
+    const guest = new FakeConnection('guest-tab');
+    await connect(server, room, owner, profile('owner-member', 'Owner'));
+    await connect(server, room, member, profile('plain-member', 'Member'));
+    await connect(server, room, steward, profile('steward-member', 'Steward'));
+    await connect(server, room, guest, profile('guest-member', 'Guest'));
+    (owner.state as unknown as {role: string}).role = 'owner';
+    (steward.state as unknown as {role: string}).role = 'steward';
+    (guest.state as unknown as {role: string}).role = 'guest';
+
+    await send(server, owner, {type: 'media.queue.policy', opId: 'queue-policy-1', policy: 'stewarded', expectedRevision: 0});
+    await send(server, member, enqueue('queue-member-add-1', 'abcdefghijk'));
+    let queue = (await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))!;
+    const itemId = queue.items[1].id;
+    await send(server, member, {type: 'media.queue.select', opId: 'queue-member-select-1', itemId, expectedRevision: queue.revision});
+    queue = (await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))!;
+    expect(queue.activeItemId).not.toBe(itemId);
+    await send(server, steward, {type: 'media.queue.select', opId: 'queue-steward-select-1', itemId, expectedRevision: queue.revision});
+    queue = (await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))!;
+    expect(queue.activeItemId).toBe(itemId);
+
+    await send(server, guest, enqueue('queue-guest-add-1', 'lmnopqrstuv'));
+    expect((await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))?.items).toHaveLength(2);
+    const media = (await room.storage.get<RoomMediaState>(MEDIA_KEY))!;
+    await send(server, member, {
+      type: 'media.command', command: {type: 'source', source: source('lmnopqrstuv')},
+      expectedRevision: media.revision, expectedItemId: queue.activeItemId,
+    });
+    expect((await room.storage.get<RoomMediaState>(MEDIA_KEY))?.source.id).toBe('abcdefghijk');
   });
 });
 

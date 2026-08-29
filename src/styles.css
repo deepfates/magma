@@ -179,6 +179,28 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .cue-deck span strong { color: var(--ink); font-size: 9px; }
 .cue-deck span small { margin-top: 2px; color: var(--dim); font-size: 8px; }
 .cue-status { min-height: 12px; margin-top: 6px; color: var(--dim); font-size: 8px; }
+.listening-deck { margin-top: 2px; }
+.deck-now { display: grid; gap: 4px; padding: 14px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 5px; background: color-mix(in srgb, var(--accent) 5%, var(--field)); }
+.deck-now > span { display: flex; align-items: center; gap: 5px; color: var(--accent); font: 8px ui-monospace, monospace; letter-spacing: .08em; }
+.deck-now strong { overflow-wrap: anywhere; font-size: 12px; }
+.deck-now small, .deck-list small { color: var(--dim); font-size: 8px; }
+.deck-staged { margin: 8px 0 0; padding: 7px 9px; border-left: 2px solid var(--focus); color: var(--muted); background: color-mix(in srgb, var(--focus) 7%, transparent); font-size: 9px; }
+.deck-list { display: grid; margin: 8px 0 0; padding: 0; list-style: none; counter-reset: deck; }
+.deck-list li { counter-increment: deck; display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 6px; min-height: 58px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.deck-list li > div:first-child { min-width: 0; }
+.deck-list li > div:first-child::before { content: counter(deck, decimal-leading-zero); margin-right: 7px; color: var(--dim); font: 8px ui-monospace, monospace; }
+.deck-list strong { overflow-wrap: anywhere; font-size: 10px; font-weight: 550; }
+.deck-list small { display: block; margin: 3px 0 0 24px; }
+.deck-list li.staged { box-shadow: inset 2px 0 var(--focus); }
+.deck-actions { display: flex; align-items: center; }
+.deck-actions button, .deck-remove { display: grid; place-items: center; min-width: 30px; min-height: 30px; padding: 5px; border: 0; color: var(--dim); background: transparent; cursor: pointer; font-size: 8px; }
+.deck-actions button:last-child { display: block; min-width: 54px; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); }
+.deck-actions button:disabled { opacity: .28; cursor: not-allowed; }
+.deck-composer { margin-top: 12px; }
+.deck-composer summary { min-height: 36px; padding: 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); cursor: pointer; font-size: 10px; }
+.deck-composer[open] summary { color: var(--ink); background: var(--field); }
+.deck-policy { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; color: var(--dim); font-size: 9px; }
+.deck-policy select { padding: 6px; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); background: #0c0e0d; font-size: 9px; }
 
 .mode-switcher { display: grid; grid-template-columns: 1fr; }
 .mode-switcher button { padding: 11px 4px; border: 0; border-bottom: 1px solid var(--line); text-align: left; color: var(--muted); background: transparent; cursor: pointer; font-size: 11px; }
@@ -303,6 +325,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
   .cue-deck { grid-template-columns: 1fr; }
   .focus-console { padding: 105px 20px 88px; }
   .surface-header .icon-button { width: 44px; height: 44px; }
+  .deck-actions button, .deck-remove, .deck-composer summary { min-width: 44px; min-height: 44px; }
+  .deck-list li { grid-template-columns: minmax(0,1fr) auto; }
+  .deck-remove { grid-column: 2; }
 }
 @media (prefers-reduced-motion: reduce) {
   .social-bloom-visual { display: none; }

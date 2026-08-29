@@ -3,6 +3,8 @@ import type PartySocket from 'partysocket';
 import {clearWorkspaceCache, connectWorkspace} from './store';
 import {createTimer, remainingAt, type TimerCommand, type TimerDurations, type TimerState} from './domain/timer';
 import {createMediaState, type MediaCommand, type RoomMediaState} from './domain/media';
+import {createMediaQueue, type DeckPolicy, type MediaQueueState} from './domain/mediaQueue';
+import type {YouTubeSource} from './domain/youtube';
 import type {Participant, Profile, RoomSnapshot, SessionArtifact, TimerProposal} from './domain/protocol';
 import type {PorchMessage, PresenceChoice, RoomCueId, RoomSignal, SocialRelease} from './domain/porch';
 import type {RoomAdmission} from './accessClient';
@@ -45,6 +47,7 @@ export const useRoom = (
   const [connected, setConnected] = useState(false);
   const [timer, setTimer] = useState<TimerState>(createTimer());
   const [media, setMedia] = useState<RoomMediaState>(createMediaState());
+  const [mediaQueue, setMediaQueue] = useState<MediaQueueState>(() => createMediaQueue(createMediaState().source));
   const [mediaReady, setMediaReady] = useState(false);
   const [serverOffset, setServerOffset] = useState(0);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -85,6 +88,7 @@ export const useRoom = (
       setConnected(false);
       setTimer(createTimer());
       setMedia(createMediaState());
+      setMediaQueue(createMediaQueue(createMediaState().source));
       setMediaReady(false);
       setParticipants([]);
       setHostId(null);
@@ -140,6 +144,7 @@ export const useRoom = (
               setMedia(snapshot.media);
               setMediaReady(true);
             }
+            if (snapshot.mediaQueue) setMediaQueue(snapshot.mediaQueue);
             if (!Number.isFinite(bestRtt.current)) setServerOffset(snapshot.serverNow - Date.now());
           }
           if (data.type === 'clock.pong') {
@@ -272,7 +277,24 @@ export const useRoom = (
   const updateSettings = useCallback((durations: TimerDurations, autoAdvance: boolean) => send({
     type: 'timer.settings', durations, autoAdvance, expectedRevision: timer.revision, expectedSessionId: timer.sessionId,
   }), [send, timer.revision, timer.sessionId]);
-  const mediaCommand = useCallback((command: MediaCommand) => send({type: 'media.command', command, expectedRevision: media.revision}), [media.revision, send]);
+  const mediaCommand = useCallback((command: MediaCommand) => send({
+    type: 'media.command', command, expectedRevision: media.revision, expectedItemId: mediaQueue.activeItemId,
+  }), [media.revision, mediaQueue.activeItemId, send]);
+  const enqueueMedia = useCallback((source: YouTubeSource, activate = false) => send({
+    type: 'media.queue.enqueue', opId: crypto.randomUUID(), source, activate,
+  }), [send]);
+  const moveMedia = useCallback((itemId: string, beforeItemId: string | null) => send({
+    type: 'media.queue.move', opId: crypto.randomUUID(), itemId, beforeItemId, expectedRevision: mediaQueue.revision,
+  }), [mediaQueue.revision, send]);
+  const removeMedia = useCallback((itemId: string) => send({
+    type: 'media.queue.remove', opId: crypto.randomUUID(), itemId, expectedRevision: mediaQueue.revision,
+  }), [mediaQueue.revision, send]);
+  const selectMedia = useCallback((itemId: string) => send({
+    type: 'media.queue.select', opId: crypto.randomUUID(), itemId, expectedRevision: mediaQueue.revision,
+  }), [mediaQueue.revision, send]);
+  const setDeckPolicy = useCallback((policy: DeckPolicy) => send({
+    type: 'media.queue.policy', opId: crypto.randomUUID(), policy, expectedRevision: mediaQueue.revision,
+  }), [mediaQueue.revision, send]);
   const approve = useCallback((proposalId: string) => send({type: 'timer.approve', proposalId}), [send]);
   const dismiss = useCallback((proposalId: string) => send({type: 'timer.dismiss', proposalId}), [send]);
   const transferHost = useCallback((memberId: string) => send({type: 'host.transfer', memberId}), [send]);
@@ -284,6 +306,7 @@ export const useRoom = (
     connected,
     timer,
     media,
+    mediaQueue,
     mediaReady,
     participants,
     hostId,
@@ -312,6 +335,11 @@ export const useRoom = (
     updateProfile,
     updateSettings,
     mediaCommand,
+    enqueueMedia,
+    moveMedia,
+    removeMedia,
+    selectMedia,
+    setDeckPolicy,
     approve,
     dismiss,
     transferHost,

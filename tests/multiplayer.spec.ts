@@ -187,7 +187,7 @@ test('the Floor holds social activity, opens the Porch, and returns together', a
   await expect(host.locator('.person').filter({hasText: 'Jules'}).locator('.posture')).toHaveText('away');
   await expect(host.locator('.person').filter({hasText: 'Maya'}).locator('.posture')).toHaveText('focusing');
   await guest.getByRole('button', {name: 'Environment', exact: true}).click();
-  await expect(guest.getByRole('button', {name: 'Open selected view'})).toBeVisible();
+  await expect(guest.getByRole('button', {name: 'View closed'})).toBeVisible();
   await expect(guest.getByRole('button', {name: 'Ritual cues off'})).toBeVisible();
   await expect(guest.getByRole('button', {name: 'Social sounds off'})).toBeVisible();
 
@@ -244,21 +244,24 @@ test('the room view converges while personal media preferences stay local', asyn
   expect(geometry.height).toBe(await host.evaluate(() => innerHeight));
 
   await follower.getByRole('button', {name: 'Environment'}).click();
-  await expect(follower.getByText('Everyone here can steer the shared view.')).toBeVisible();
+  await expect(follower.getByText('Open deck · everyone can add and arrange.')).toBeVisible();
+  await follower.locator('.deck-composer summary').click();
   await follower.getByRole('button', {name: /ABC7 Treasure Island/}).click();
   await expect(hostFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
   await expect(followerFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
   await followerFrame.evaluate((element) => { element.dataset.identity = 'retained'; });
-  await follower.getByRole('button', {name: 'Camera muted'}).click();
+  await follower.getByRole('button', {name: 'Shared sound muted'}).click();
   expect(await followerFrame.getAttribute('data-identity')).toBe('retained');
 
   await host.getByRole('button', {name: 'Environment'}).click();
+  await host.locator('.deck-composer summary').click();
   await host.getByRole('button', {name: /TrazCam Bay Life/}).click();
   await expect(hostFrame).toHaveAttribute('src', /E_kvIXtF_yo/);
   await expect(followerFrame).toHaveAttribute('src', /E_kvIXtF_yo/);
 
   await host.getByLabel('YouTube video or playlist URL').fill('https://www.youtube.com/playlist?list=PL1234567890abc');
-  await host.getByRole('button', {name: 'Set for room'}).click();
+  await host.locator('.custom-scene').getByRole('button', {name: 'Add to deck'}).click();
+  await host.locator('.deck-list li').filter({hasText: 'Room playlist'}).getByRole('button', {name: 'Use now'}).click();
   await expect(hostFrame).toHaveAttribute('src', /embed\/videoseries/);
   await expect(followerFrame).toHaveAttribute('src', /list=PL1234567890abc/);
   expect(await host.evaluate(() => JSON.parse(localStorage.getItem('magma:youtube-backdrop:v2') ?? '{}').muted ?? true)).toBe(true);
@@ -271,7 +274,7 @@ test('the room view converges while personal media preferences stay local', asyn
   await follower.getByRole('button', {name: /Earth from the ISS/}).click();
   await expect(hostFrame).toHaveAttribute('src', /sWasdbDVNvc/);
   await expect(followerFrame).toHaveCount(0);
-  await follower.getByRole('button', {name: 'Open selected view'}).click();
+  await follower.getByRole('button', {name: 'View closed'}).click();
   await expect(followerFrame).toHaveAttribute('src', /sWasdbDVNvc/);
   await follower.reload();
   await expect(followerFrame).toHaveAttribute('src', /sWasdbDVNvc/);
@@ -281,6 +284,73 @@ test('the room view converges while personal media preferences stay local', asyn
   expect(await hostFrame.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe('auto');
   await hostContext.close();
   await followerContext.close();
+});
+
+test('Floor additions stay quiet, then the Listening Deck opens once in canonical order', async ({browser}) => {
+  test.setTimeout(75_000);
+  const room = `deck-${crypto.randomUUID()}`;
+  const adaContext = await browser.newContext();
+  const linContext = await browser.newContext();
+  await Promise.all([blockRemoteMedia(adaContext), blockRemoteMedia(linContext)]);
+  const ada = await adaContext.newPage();
+  const lin = await linContext.newPage();
+  await ada.goto(`/?room=${room}`);
+  await lin.goto(`/?room=${room}`);
+  await enterAs(ada, 'Ada', 'Hold one clean block');
+  await enterAs(lin, 'Lin', 'Keep the threshold calm');
+
+  await ada.getByRole('button', {name: 'Tempo'}).click();
+  await ada.getByRole('spinbutton', {name: 'Focus min'}).fill('0.5');
+  await ada.getByRole('button', {name: 'Set room cadence'}).click();
+  await ada.locator('.tool-dock').getByRole('button', {name: 'Focus'}).click();
+  await ada.getByRole('button', {name: 'Start together'}).click();
+
+  await Promise.all([
+    ada.getByRole('button', {name: 'Environment'}).click(),
+    lin.getByRole('button', {name: 'Environment'}).click(),
+  ]);
+  const adaDeck = ada.locator('.listening-deck');
+  const linDeck = lin.locator('.listening-deck');
+  await Promise.all([
+    ada.locator('.deck-composer summary').click(),
+    lin.locator('.deck-composer summary').click(),
+  ]);
+  await Promise.all([
+    ada.getByRole('button', {name: /ABC7 Treasure Island/}).click(),
+    lin.getByRole('button', {name: /TrazCam Bay Life/}).click(),
+  ]);
+  await Promise.all([
+    ada.locator('.deck-composer summary').click(),
+    lin.locator('.deck-composer summary').click(),
+  ]);
+
+  await expect(adaDeck.locator('.deck-list li')).toHaveCount(0);
+  await expect(linDeck.locator('.deck-list li')).toHaveCount(0);
+  await expect(adaDeck.locator('.deck-now')).toContainText('Treasure Island panorama');
+  await expect(ada.locator('.living-window iframe')).toHaveAttribute('src', /BSWhGNXxT9A/);
+  await lin.getByRole('button', {name: 'View open'}).click();
+  await expect(lin.locator('.living-window iframe')).toHaveCount(0);
+
+  const adaOrder = adaDeck.locator('.deck-now, .deck-list');
+  const linOrder = linDeck.locator('.deck-now, .deck-list');
+  const orderText = async (locator: typeof adaOrder) => (await locator.allTextContents()).join(' ');
+  await expect.poll(() => orderText(adaOrder), {timeout: 40_000}).toContain('ABC7 Treasure Island');
+  expect(await orderText(adaOrder)).toContain('TrazCam Bay Life');
+  expect(await orderText(adaOrder)).toContain('Ada');
+  expect(await orderText(adaOrder)).toContain('Lin');
+  expect(await orderText(linOrder)).toContain('ABC7 Treasure Island');
+  expect(await orderText(linOrder)).toContain('TrazCam Bay Life');
+  await expect(ada.locator('.living-window iframe')).not.toHaveAttribute('src', /BSWhGNXxT9A/);
+  await expect(lin.locator('.living-window iframe')).toHaveCount(0);
+
+  await lin.reload();
+  await lin.getByRole('button', {name: 'Environment'}).click();
+  const restored = await lin.locator('.deck-now, .deck-list').allTextContents();
+  expect(restored.join(' ')).toContain('ABC7 Treasure Island');
+  expect(restored.join(' ')).toContain('TrazCam Bay Life');
+  await expect(lin.locator('.living-window iframe')).toHaveCount(0);
+  await adaContext.close();
+  await linContext.close();
 });
 
 test('surface drafts survive a posture change while the clock remains reachable', async ({page}) => {

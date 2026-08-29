@@ -188,7 +188,8 @@ function App() {
   const session = useRoom(room, legacyAccess ? undefined : protectedAccess?.admission ?? null, protectedAccess?.refreshAdmission);
   const milliseconds = useClock(session.remaining);
   const audio = useAmbientAudio();
-  const backdrop = useYouTubeBackdrop(session.media.source, (source) => session.mediaCommand({type: 'source', source}), session.connected);
+  const canSteerMedia = session.connected && session.role !== 'guest';
+  const backdrop = useYouTubeBackdrop(session.media.source, canSteerMedia);
   const ritual = useBlockRitual();
   const assist = useFocusAssist(session.timer.status === 'running', session.completion, audio.playChime);
   const [copied, setCopied] = useState(false);
@@ -380,7 +381,7 @@ function App() {
     <>
     <main ref={instrumentRef} data-arrival-background className={`instrument-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''} ${playerMode ? 'player-mode' : ''}`}>
       <section className="media-stage" aria-label="Living view">
-        <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canShare={session.connected} muted={backdrop.muted} />
+        <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canShare={canSteerMedia} muted={backdrop.muted} />
         {(!backdrop.enabled || backdrop.reducedSensory) && <div className="quiet-field">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />}<span>{backdrop.reducedSensory ? 'Quiet field' : 'Lava field'}</span></div>}
       </section>
 
@@ -418,7 +419,7 @@ function App() {
           </section>
 
           <section className="tool-surface" hidden={activeSurface !== 'workspace'} aria-labelledby="surface-workspace"><div className="surface-header"><div><p>Shared surface</p><h2 id="surface-workspace" tabIndex={-1}>Workspace</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Workspace"><X size={18} /></button></div><Workspace profile={session.profile} participants={session.participants} writable={session.workspaceWritable} /></section>
-          <section className="tool-surface" hidden={activeSurface !== 'environment'} aria-labelledby="surface-environment"><div className="surface-header"><div><p>Room + personal</p><h2 id="surface-environment" tabIndex={-1}>Environment</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Environment"><X size={18} /></button></div><EnvironmentLab backdrop={backdrop} audio={audio} sendSignal={session.signal} /></section>
+          <section className="tool-surface" hidden={activeSurface !== 'environment'} aria-labelledby="surface-environment"><div className="surface-header"><div><p>Room + personal</p><h2 id="surface-environment" tabIndex={-1}>Environment</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Environment"><X size={18} /></button></div><EnvironmentLab backdrop={backdrop} audio={audio} sendSignal={session.signal} queue={session.mediaQueue} role={session.role} memberId={session.profile.memberId} floor={isFloor(session.timer)} addSource={session.enqueueMedia} moveItem={session.moveMedia} removeItem={session.removeMedia} selectItem={session.selectMedia} setPolicy={session.setDeckPolicy} /></section>
           <section className="tool-surface" hidden={activeSurface !== 'tempo'} aria-labelledby="surface-tempo"><div className="surface-header"><div><p>Room authority</p><h2 id="surface-tempo" tabIndex={-1}>Tempo</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Tempo"><X size={18} /></button></div>
             <div className="mode-switcher">{MODES.map((mode) => <button aria-pressed={session.timer.mode === mode.id} className={session.timer.mode === mode.id ? 'active' : ''} key={mode.id} onClick={() => session.command({type: 'mode', mode: mode.id})}>{mode.label}</button>)}</div>
             <div className="timer-settings"><label>Focus <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.focus / 60_000} id="focus-duration" /> min</span></label><label>Short break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.shortBreak / 60_000} id="short-duration" /> min</span></label><label>Long break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.longBreak / 60_000} id="long-duration" /> min</span></label><label className="auto-setting"><input type="checkbox" defaultChecked={session.timer.autoAdvance} id="auto-advance" /> Auto-start breaks</label><button disabled={!session.isHost} onClick={() => { const get = (id: string) => Number((document.getElementById(id) as HTMLInputElement).value) * 60_000; session.updateSettings({focus: get('focus-duration'), shortBreak: get('short-duration'), longBreak: get('long-duration')}, (document.getElementById('auto-advance') as HTMLInputElement).checked); }}>{session.isHost ? 'Set room cadence' : 'Host controls cadence'}</button></div>

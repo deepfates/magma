@@ -4,6 +4,11 @@ import {hasStoreInStorage, loadStoreFromStorage, TinyBasePartyKitServer} from 't
 import type {MergeableChanges, MergeableContent, MergeableStore} from 'tinybase/mergeable-store';
 import {applyTimerCommand, applyTimerSettings, createTimer, normalizeTimer, settleElapsed, type TimerCommand, type TimerDurations, type TimerState} from '../src/domain/timer';
 import {applyMediaCommand, createMediaState, normalizeMediaState, type RoomMediaState} from '../src/domain/media';
+import {
+  activeQueueItem, canArrangeQueue, canContributeToQueue, canRemoveQueueItem, canSetDeckPolicy,
+  createMediaQueue, enqueueMedia, moveMedia, normalizeMediaQueue, releaseHeldMedia, removeMedia, selectMedia, setDeckPolicy,
+  type MediaQueueItem, type MediaQueueState,
+} from '../src/domain/mediaQueue';
 import {isClientMessage, type Participant, type Profile, type SessionArtifact, type TimerProposal} from '../src/domain/protocol';
 import {SCENE_PRESETS, type YouTubeSource} from '../src/domain/youtube';
 import {
@@ -46,13 +51,18 @@ type ClockSocialState = {
   signalCounts: Partial<Record<RoomCueId, number>>;
   reactionCounts: Record<string, number>;
   socialRelease: SocialRelease | null;
+  media: RoomMediaState;
+  mediaQueue: MediaQueueState;
 };
+type QueueReceipt = {memberId: string; opId: string; fingerprint: string; revision: number; outcome: string};
 
 const TIMER_KEY = 'magma:timer';
 const ARTIFACTS_KEY = 'magma:artifacts';
 const PHASE_PARTICIPANTS_KEY = 'magma:phase-participants';
 const REACTION_COUNT_KEY = 'magma:reaction-count';
 const MEDIA_KEY = 'magma:media';
+const MEDIA_QUEUE_KEY = 'magma:media-queue:v1';
+const MEDIA_QUEUE_RECEIPTS_KEY = 'magma:media-queue-receipts:v1';
 const PORCH_MESSAGES_KEY = 'magma:porch-messages';
 const HELD_SIGNALS_KEY = 'magma:held-signals';
 const HELD_REACTIONS_KEY = 'magma:held-reactions';
@@ -69,6 +79,7 @@ const ALLOWED_CELLS: Record<string, Set<string>> = {
 const MAX_MESSAGE_BYTES = 4_096;
 const MAX_HELD_REACTIONS = 32;
 const MAX_SOCIAL_NONCES = 128;
+const MAX_MEDIA_QUEUE_RECEIPTS = 128;
 const WORKSPACE_KEY = 'magma:workspace:v2';
 const MAX_WORKSPACE_ROWS_PER_TABLE = 256;
 const WORKSPACE_SCHEMA = {
@@ -155,11 +166,14 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   private phaseParticipants: SessionArtifact['participants'] = [];
   private reactionCount = 0;
   private media: RoomMediaState = createMediaState();
+  private listeningQueue: MediaQueueState = createMediaQueue(createMediaState().source);
   private hostMemberId: string | null = null;
   private proposal: RevisionBoundProposal | null = null;
   private messageTimes = new Map<string, number[]>();
-  private mediaQueue: Promise<void> = Promise.resolve();
   private roomQueue: Promise<void> = Promise.resolve();
+  private mediaQueueReceipts: QueueReceipt[] = [];
+  private queueTimes = new Map<string, number[]>();
+  private roomQueueTimes: number[] = [];
   private porchMessages: PorchMessage[] = [];
   private heldSignals: RoomSignal[] = [];
   private heldReactions: ReactionEvent[] = [];
@@ -186,6 +200,21 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     this.reactionCount = this.normalizeReactionCount(await this.room.storage.get(REACTION_COUNT_KEY));
     this.media = normalizeMediaState(await this.room.storage.get<RoomMediaState>(MEDIA_KEY));
     this.media = {...this.media, source: this.canonicalSource(this.media.source)};
+    const storedQueue = await this.room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY);
+    this.listeningQueue = normalizeMediaQueue(storedQueue, this.media.source, this.media.changedAt);
+    const activeItem = activeQueueItem(this.listeningQueue);
+    if (activeItem.source.kind !== this.media.source.kind || activeItem.source.id !== this.media.source.id) {
+      this.listeningQueue = {
+        ...this.listeningQueue,
+        items: this.listeningQueue.items.map((item) => item.id === this.listeningQueue.activeItemId
+          ? {...item, source: this.media.source}
+          : item),
+      };
+    }
+    this.mediaQueueReceipts = this.normalizeQueueReceipts(await this.room.storage.get(MEDIA_QUEUE_RECEIPTS_KEY));
+    if (await this.access.classify() !== 'unclaimed') {
+      await this.room.storage.put({[MEDIA_KEY]: this.media, [MEDIA_QUEUE_KEY]: this.listeningQueue});
+    }
     this.porchMessages = normalizePorchMessages(await this.room.storage.get(PORCH_MESSAGES_KEY));
     this.heldSignals = normalizeHeldSignals(await this.room.storage.get(HELD_SIGNALS_KEY));
     this.heldReactions = this.normalizeHeldReactions(await this.room.storage.get(HELD_REACTIONS_KEY));
@@ -434,22 +463,117 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     }
 
     if (parsed.type === 'media.command') {
-      const operation = this.mediaQueue.then(async () => {
-        if (parsed.expectedRevision !== this.media.revision) {
+      await this.enqueueRoomMutation(async () => {
+        await this.settleTimer('server');
+        if (participant.role === 'guest') {
+          connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'Guests can listen without steering room playback.'}));
+          return;
+        }
+        if (parsed.command.type === 'source') {
+          connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'Add sources through the Listening Deck.'}));
+          connection.send(JSON.stringify(this.snapshot()));
+          return;
+        }
+        if (parsed.expectedRevision !== this.media.revision || parsed.expectedItemId !== this.listeningQueue.activeItemId) {
           connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'The shared view changed—try that again.'}));
           connection.send(JSON.stringify(this.snapshot()));
           return;
         }
-        const command = parsed.command.type === 'source'
-          ? {...parsed.command, source: this.canonicalSource(parsed.command.source)}
-          : parsed.command;
-        const next = applyMediaCommand(this.media, command, Date.now(), participant.memberId);
+        const next = applyMediaCommand(this.media, parsed.command, Date.now(), participant.memberId);
         await this.room.storage.put(MEDIA_KEY, next);
         this.media = next;
         this.broadcastSnapshot();
       });
-      this.mediaQueue = operation.catch(() => undefined);
-      await operation;
+      return;
+    }
+
+    if (parsed.type.startsWith('media.queue.')) {
+      await this.enqueueRoomMutation(async () => {
+        await this.settleTimer('server');
+        const command = parsed as Extract<typeof parsed, {type: `media.queue.${string}`}>;
+        const fingerprint = JSON.stringify(command);
+        const receipt = this.mediaQueueReceipts.find((item) => item.memberId === participant.memberId && item.opId === command.opId);
+        if (receipt) {
+          if (receipt.fingerprint === fingerprint) {
+            connection.send(JSON.stringify({type: 'media.queue.accepted', opId: command.opId, revision: receipt.revision, outcome: receipt.outcome}));
+            connection.send(JSON.stringify(this.snapshot()));
+          } else {
+            this.rejectQueue(connection, command.opId, 'That deck operation identifier was already used.');
+          }
+          return;
+        }
+        if (!participant.profileReady || !canContributeToQueue(participant.role)) {
+          this.rejectQueue(connection, command.opId, 'This room role can listen but cannot change the deck.');
+          return;
+        }
+        if (!this.withinQueueRate(participant.memberId)) {
+          this.rejectQueue(connection, command.opId, 'The deck is moving quickly. Take a breath and try again.');
+          return;
+        }
+
+        const current = this.listeningQueue;
+        let next: MediaQueueState | null = null;
+        let outcome = '';
+        if (command.type === 'media.queue.enqueue') {
+          if (command.activate && !canArrangeQueue(participant.role, current.policy)) {
+            this.rejectQueue(connection, command.opId, 'Your source was not added because only deck stewards can select what plays right now.');
+            return;
+          }
+          const sequence = current.items.reduce((highest, item) => Math.max(highest, item.sequence), -1) + 1;
+          const item: MediaQueueItem = {
+            id: `mq_${crypto.randomUUID().replaceAll('-', '')}`,
+            source: this.canonicalSource(command.source),
+            addedById: participant.memberId,
+            addedByName: participant.name,
+            addedByEmoji: participant.emoji,
+            addedAt: Date.now(),
+            sequence,
+            origin: 'member',
+            heldForSessionId: isFloor(this.timer) ? this.timer.sessionId : null,
+          };
+          next = enqueueMedia(current, item, command.activate, isFloor(this.timer));
+          outcome = command.activate ? (isFloor(this.timer) ? 'staged' : 'activated') : 'enqueued';
+        } else {
+          if (command.expectedRevision !== current.revision) {
+            this.rejectQueue(connection, command.opId, 'The Listening Deck changed—review the latest order and try again.');
+            return;
+          }
+          if (command.type === 'media.queue.move') {
+            if (!canArrangeQueue(participant.role, current.policy)) return this.rejectQueue(connection, command.opId, 'Only deck stewards can arrange this room right now.');
+            next = moveMedia(current, command.itemId, command.beforeItemId);
+            outcome = 'moved';
+          } else if (command.type === 'media.queue.remove') {
+            const item = current.items.find((candidate) => candidate.id === command.itemId);
+            if (!item || !canRemoveQueueItem(participant.role, current.policy, participant.memberId, item)) return this.rejectQueue(connection, command.opId, 'You cannot remove that deck item.');
+            next = removeMedia(current, command.itemId);
+            outcome = 'removed';
+          } else if (command.type === 'media.queue.select') {
+            if (!canArrangeQueue(participant.role, current.policy)) return this.rejectQueue(connection, command.opId, 'Only deck stewards can select the room view right now.');
+            next = selectMedia(current, command.itemId, isFloor(this.timer));
+            outcome = isFloor(this.timer) ? 'staged' : 'activated';
+          } else if (command.type === 'media.queue.policy') {
+            if (!canSetDeckPolicy(participant.role)) return this.rejectQueue(connection, command.opId, 'Only the room owner can change deck policy.');
+            next = setDeckPolicy(current, command.policy);
+            outcome = 'policy';
+          }
+        }
+        if (!next) {
+          this.rejectQueue(connection, command.opId, 'That deck change is no longer available.');
+          return;
+        }
+        const nextMedia = next.activeItemId !== current.activeItemId
+          ? applyMediaCommand(this.media, {type: 'source', source: activeQueueItem(next).source}, Date.now(), participant.memberId)
+          : this.media;
+        const receipts = [...this.mediaQueueReceipts, {
+          memberId: participant.memberId, opId: command.opId, fingerprint, revision: next.revision, outcome,
+        }].slice(-MAX_MEDIA_QUEUE_RECEIPTS);
+        await this.putAtomic({[MEDIA_QUEUE_KEY]: next, [MEDIA_KEY]: nextMedia, [MEDIA_QUEUE_RECEIPTS_KEY]: receipts});
+        this.listeningQueue = next;
+        this.media = nextMedia;
+        this.mediaQueueReceipts = receipts;
+        connection.send(JSON.stringify({type: 'media.queue.accepted', opId: command.opId, revision: next.revision, outcome}));
+        this.broadcastSnapshot();
+      });
       return;
     }
 
@@ -623,6 +747,8 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     let reactionCount = this.reactionCount;
     let signalCounts = this.signalCounts;
     let reactionCounts = this.reactionCounts;
+    let media = this.media;
+    let mediaQueue = this.listeningQueue;
     const newFocusCompletions: Array<{artifact: SessionArtifact; release: SocialRelease}> = [];
     let completedAnyPhase = false;
 
@@ -668,6 +794,13 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         signalCounts = {};
         reactionCounts = {};
       }
+      if (wasFloor && !isFloor(result.timer)) {
+        const activated = releaseHeldMedia(mediaQueue, timer.sessionId);
+        if (activated.activeItemId !== mediaQueue.activeItemId) {
+          mediaQueue = activated;
+          media = applyMediaCommand(media, {type: 'source', source: activeQueueItem(activated).source}, now, controllerId);
+        } else mediaQueue = activated;
+      }
       timer = result.timer;
     }
 
@@ -677,7 +810,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     }
     const state: ClockSocialState = {
       timer, artifacts, phaseParticipants, porchMessages: this.porchMessages, heldSignals, heldReactions,
-      reactionCount, signalCounts, reactionCounts, socialRelease,
+      reactionCount, signalCounts, reactionCounts, socialRelease, media, mediaQueue,
     };
     await this.commitClockAndSocial(state);
     this.adoptClockAndSocial(state);
@@ -708,6 +841,8 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       [SIGNAL_COUNTS_KEY]: state.signalCounts,
       [REACTION_COUNTS_KEY]: state.reactionCounts,
       [SOCIAL_RELEASE_KEY]: state.socialRelease,
+      [MEDIA_KEY]: state.media,
+      [MEDIA_QUEUE_KEY]: state.mediaQueue,
     };
     await this.room.storage.transaction(async (transaction) => {
       await transaction.put(entries);
@@ -719,6 +854,10 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   private stateForTimerTransition(wasFloor: boolean, timer: TimerState, phaseParticipants: SessionArtifact['participants']): ClockSocialState {
     const nowFloor = isFloor(timer);
     const crossedFloorBoundary = wasFloor !== nowFloor;
+    const mediaQueue = wasFloor && !nowFloor ? releaseHeldMedia(this.listeningQueue, this.timer.sessionId) : this.listeningQueue;
+    const media = mediaQueue.activeItemId !== this.listeningQueue.activeItemId
+      ? applyMediaCommand(this.media, {type: 'source', source: activeQueueItem(mediaQueue).source}, Date.now(), 'server')
+      : this.media;
     return {
       timer,
       artifacts: this.artifacts,
@@ -730,6 +869,8 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       signalCounts: crossedFloorBoundary ? {} : this.signalCounts,
       reactionCounts: crossedFloorBoundary ? {} : this.reactionCounts,
       socialRelease: nowFloor && !wasFloor ? null : this.socialRelease,
+      media,
+      mediaQueue,
     };
   }
 
@@ -744,6 +885,8 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     this.signalCounts = state.signalCounts;
     this.reactionCounts = state.reactionCounts;
     this.socialRelease = state.socialRelease;
+    this.media = state.media;
+    this.listeningQueue = state.mediaQueue;
   }
 
   private resetReadyPresence() {
@@ -820,6 +963,21 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     return value.filter((nonce): nonce is string => typeof nonce === 'string' && /^[a-zA-Z0-9-]{8,80}$/.test(nonce)).slice(-MAX_SOCIAL_NONCES);
   }
 
+  private normalizeQueueReceipts(value: unknown): QueueReceipt[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((candidate) => {
+      if (!candidate || typeof candidate !== 'object') return [];
+      const receipt = candidate as Record<string, unknown>;
+      return typeof receipt.memberId === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(receipt.memberId)
+        && typeof receipt.opId === 'string' && /^[A-Za-z0-9-]{8,80}$/.test(receipt.opId)
+        && typeof receipt.fingerprint === 'string' && receipt.fingerprint.length <= 1_024
+        && Number.isSafeInteger(receipt.revision) && Number(receipt.revision) >= 0
+        && typeof receipt.outcome === 'string' && receipt.outcome.length <= 24
+        ? [{memberId: receipt.memberId, opId: receipt.opId, fingerprint: receipt.fingerprint, revision: Number(receipt.revision), outcome: receipt.outcome}]
+        : [];
+    }).slice(-MAX_MEDIA_QUEUE_RECEIPTS);
+  }
+
   private normalizeReactionCount(value: unknown) {
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
   }
@@ -872,6 +1030,26 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     return true;
   }
 
+  private withinQueueRate(memberId: string) {
+    const now = Date.now();
+    const recent = (this.queueTimes.get(memberId) ?? []).filter((timestamp) => timestamp > now - 10_000);
+    this.roomQueueTimes = this.roomQueueTimes.filter((timestamp) => timestamp > now - 10_000);
+    if (recent.length >= 4 || this.roomQueueTimes.length >= 12) {
+      this.queueTimes.set(memberId, recent);
+      return false;
+    }
+    recent.push(now);
+    this.roomQueueTimes.push(now);
+    this.queueTimes.set(memberId, recent);
+    return true;
+  }
+
+  private rejectQueue(connection: Connection, opId: string, message: string) {
+    connection.send(JSON.stringify({type: 'media.queue.rejected', opId, revision: this.listeningQueue.revision, message}));
+    connection.send(JSON.stringify({type: 'notice', level: 'error', message}));
+    connection.send(JSON.stringify(this.snapshot()));
+  }
+
   private snapshot() {
     const participants = this.uniqueParticipants();
     const hostId = this.hostMemberId;
@@ -884,8 +1062,18 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       proposal: this.proposal,
       artifacts: this.artifacts,
       media: this.media,
+      mediaQueue: this.publicMediaQueue(),
       porchMessages: isFloor(this.timer) ? [] : this.porchMessages,
       socialRelease: isFloor(this.timer) ? null : this.socialRelease,
+    };
+  }
+
+  private publicMediaQueue(): MediaQueueState {
+    if (!isFloor(this.timer)) return this.listeningQueue;
+    return {
+      ...this.listeningQueue,
+      items: this.listeningQueue.items.filter((item) => item.heldForSessionId !== this.timer.sessionId),
+      stagedItemId: null,
     };
   }
 
