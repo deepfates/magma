@@ -26,6 +26,75 @@ The world remains visually primary. Glass and instruments appear where they are 
 
 These laws apply Interface Lab's engine-adapter, app-owned domain state, semantic command, responsive-posture, and feedback principles without importing its framework wholesale into this React application.
 
+## Visual and interaction composition
+
+This is the durable visual contract. Individual styling may evolve, but a Porch implementation that violates this composition has lost the product even if its features work.
+
+### The resting frame
+
+The entire device viewport is the window. Treasure Island, another live view, Earth, or Glow runs edge to edge with no application frame around it. Visual sources use a cover treatment so each device sees the natural slice available through its own screen rather than a letterboxed miniature chosen by another device. Quiet may replace motion, but it does not replace the place with a dashboard.
+
+Shared glass occupies the same full spatial field above the world. It is transparent wherever nobody has left anything. Ink, notes, documents, links, images, and instruments feel placed on or just in front of the view; they do not live in a permanent board beside it. One immediate gesture hides the glass completely.
+
+At rest, only a few landmarks remain:
+
+- the Porch name and current view, which opens the tuner;
+- a compact people/invite presence anchor;
+- the active shared clock when one is in use;
+- a small contextual tool shelf for moving, drawing, leaving something, talking, or opening instruments;
+- one quiet connection indicator when it has something meaningful to say.
+
+These landmarks are not cards competing for attention. They recede through scale, opacity, and inactivity while remaining discoverable and keyboard reachable. The horizon, city, Earth, or light remains the first thing a person perceives.
+
+### Layers, from back to front
+
+1. **World** - the visual source, full bleed and device-fitted.
+2. **Atmosphere** - independent radio/ambience and restrained world overlays; never a ticker wall.
+3. **Glass** - persistent shared artifacts and placeable instruments.
+4. **People and response** - cursors, selections, speaking state, blooms, ripples, cues, and other ephemeral collaboration feedback.
+5. **Chrome** - contextual tools, sheets, and recovery messages, present only while needed.
+
+This order is semantic as well as visual. A weather mark belongs to the world; a note belongs to the glass; a cursor belongs to a person; a source picker belongs to transient chrome. Features should not migrate into generic floating cards merely because cards are easy to build.
+
+### Instruments and configuration
+
+Opening the Porch name produces a beautiful visual shelf for Window, Radio, and World choices. It previews places and atmospheres rather than exposing provider configuration fields as the primary experience. Pasting a source, inspecting attribution, arranging a queue, or saving a setup happens inside that tuner and disappears when the choice is made.
+
+The tool shelf is an instrument rack, not application navigation. Selecting Draw changes what the pointer does on the glass. Selecting Note lets the next gesture leave a note. Selecting a Block, sound pad, document, or future object lets it be placed or operated directly. A foreground sheet may temporarily help with people, a queue, history, or detailed editing, but only one major sheet occupies attention at a time; Escape, outside click, and an obvious close action return to the same live room without losing work.
+
+### Material and graphic character
+
+Porch should feel pristine, nocturnal, warm, and precise rather than generically "cozy" or theatrically futuristic. The live world supplies most of the color. Product surfaces use a restrained neutral material, excellent typography, crisp geometry, and enough translucency to retain a sense of place without sacrificing legibility. Glow may be saturated and strange because it is an authored world source; ordinary controls should not imitate it everywhere.
+
+Copy uses familiar nouns and direct verbs: Porch, Window, Glass, People, Draw, Note, Talk, Start, Pause, Earlier, Now, Next. It does not narrate an invented productivity cosmology, call ordinary controls rituals, or explain the metaphor every time someone acts.
+
+Calm and juice are a rhythm:
+
+- **calm at rest** - stable composition, sparse chrome, slow or natural background motion, silence by default where browsers require consent;
+- **juice at contact** - immediate tactile hover/press/drag feedback and responsive direct manipulation;
+- **juice at consequence** - a localized bloom, light, sound, haptic, or shared reaction when something meaningful starts, lands, completes, or arrives;
+- **calm after consequence** - effects finish promptly and leave the world and artifacts readable.
+
+No effect exists only to keep the screen busy. Reduced motion and muted operation preserve semantic feedback through light, shape, text, and timing.
+
+### Responsive posture
+
+Desktop, tablet, and phone show the same Porch and shared coordinates. The world re-crops to the viewport; it does not change for everyone because one person rotates a phone. Anchors respect safe areas and avoid the most valuable visible content where possible. Parallel desktop sheets become condensed or sequential phone sheets while retaining the same commands, draft state, selection, and return point. Touch targets, pen input, keyboard focus, zoom, and on-screen keyboards must not make the glass or tuner unusable.
+
+### Visual rejection tests
+
+The design has drifted if an ordinary screenshot reads primarily as any of the following:
+
+- a Pomodoro dashboard with scenic wallpaper;
+- a generic whiteboard with a video background;
+- a grid of feed cards or situation-monitor widgets;
+- a chat application with a decorative canvas;
+- a settings console for providers, roles, policies, or permissions;
+- a permanent stack of translucent panels hiding the world;
+- a wall of gamification counters, streaks, badges, arbitrary slogans, or faux-mystical productivity copy.
+
+The intended screenshot reads first as **somewhere worth looking at**, then reveals **evidence that friends are here and useful things can happen here**.
+
 ## Finished capability map
 
 ### 1. Arrival, identity, and room continuity
