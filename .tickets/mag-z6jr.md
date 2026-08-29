@@ -1,6 +1,6 @@
 ---
 id: mag-z6jr
-status: open
+status: in_progress
 deps: []
 links: []
 created: 2026-08-29T10:41:08Z
