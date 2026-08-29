@@ -3,21 +3,14 @@ import {ChevronDown, ChevronUp, Eye, EyeOff, Radio, Trash2, Volume2, VolumeX} fr
 import {parseYouTubeSource, SCENE_PRESETS, type YouTubeSource} from './domain/youtube';
 import type {useAmbientAudio} from './useAmbientAudio';
 import type {useYouTubeBackdrop} from './useYouTubeBackdrop';
-import type {RoomCueId} from './domain/porch';
 import {canArrangeQueue, canRemoveQueueItem, type DeckPolicy, type MediaQueueState} from './domain/mediaQueue';
 import type {AuthRole} from './domain/auth';
 
-const SOCIAL_SIGNALS: Array<{id: RoomCueId; label: string; symbol: string; meaning: string}> = [
-  {id: 'smallWin', label: 'Nice', symbol: '✦', meaning: 'Acknowledge movement'},
-  {id: 'breathe', label: 'With you', symbol: '〰', meaning: 'Offer quiet support'},
-];
-
 export function EnvironmentLab({
-  backdrop, audio, sendSignal, queue, role, memberId, floor, addSource, moveItem, removeItem, selectItem, setPolicy,
+  backdrop, audio, queue, role, memberId, floor, addSource, moveItem, removeItem, selectItem, setPolicy,
 }: {
   backdrop: ReturnType<typeof useYouTubeBackdrop>;
   audio: ReturnType<typeof useAmbientAudio>;
-  sendSignal: (cueId: RoomCueId) => void;
   queue: MediaQueueState;
   role: AuthRole;
   memberId: string;
@@ -29,7 +22,6 @@ export function EnvironmentLab({
   setPolicy: (policy: DeckPolicy) => void;
 }) {
   const [draft, setDraft] = useState('');
-  const [lastCue, setLastCue] = useState('');
   const [deckStatus, setDeckStatus] = useState('');
   const apply = () => {
     const source = parseYouTubeSource(draft);
@@ -72,7 +64,7 @@ export function EnvironmentLab({
       <div className="surface-section-heading"><strong>On this device</strong><small>These controls never change another person’s setup.</small></div>
       <div className="inline-controls">
         <button aria-pressed={backdrop.enabled && !backdrop.reducedSensory} onClick={() => setWindowOpen(!(backdrop.enabled && !backdrop.reducedSensory))}>{backdrop.enabled && !backdrop.reducedSensory ? <Eye size={14} /> : <EyeOff size={14} />}{backdrop.enabled && !backdrop.reducedSensory ? 'View open' : 'View closed'}</button>
-        <button aria-pressed={!backdrop.muted} onClick={() => backdrop.setMuted(!backdrop.muted)}>{backdrop.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}{backdrop.muted ? 'Shared sound muted' : 'Shared sound on'}</button>
+        <button aria-pressed={!backdrop.muted} onClick={() => backdrop.setMuted(!backdrop.muted)}>{backdrop.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}{backdrop.muted ? 'Background audio muted' : 'Background audio on'}</button>
         <button className={backdrop.reducedSensory ? 'selected' : ''} onClick={quietEverything}>Quiet everything</button>
       </div>
 
@@ -111,11 +103,6 @@ export function EnvironmentLab({
         <button onClick={() => audio.setCuesEnabled(!audio.cuesEnabled)}>{audio.cuesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}{audio.cuesEnabled ? 'Ritual cues on' : 'Ritual cues off'}</button>
         <label>Noise <input type="range" min="0" max="100" value={Math.round(audio.volume * 100)} onChange={(event) => audio.setVolume(Number(event.target.value) / 100)} aria-label="Warm noise volume" /></label>
       </div>
-
-      <div className="surface-section-heading"><strong>Room signals</strong><small>Peer support stays distinct from the room clock. Sound is a separate local opt-in.</small></div>
-      <div className="cue-deck">{SOCIAL_SIGNALS.map((cue) => <button key={cue.id} onClick={() => { sendSignal(cue.id); setLastCue(`${cue.label} sent: ${cue.meaning}`); }}><b>{cue.symbol}</b><span><strong>{cue.label}</strong><small>{cue.meaning}</small></span></button>)}</div>
-      <div className="inline-controls"><button onClick={() => audio.setSocialCuesEnabled(!audio.socialCuesEnabled)}>{audio.socialCuesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}{audio.socialCuesEnabled ? 'Social sounds on' : 'Social sounds off'}</button></div>
-      <div className="cue-status" aria-live="polite">{lastCue}</div>
 
       <div className="surface-section-heading"><strong>Sensory boundary</strong><small>Quiet is a complete setup.</small></div>
       <div className="inline-controls">{backdrop.reducedSensory && <button onClick={() => backdrop.setReducedSensory(false)}>Restore visual field</button>}</div>

@@ -33,13 +33,13 @@ test('two people share an authoritative clock and merge their workspace', async 
 
   await first.getByRole('button', {name: 'Start together'}).click();
   await expect(first.getByRole('button', {name: 'Pause together'})).toBeVisible();
-  await expect(second.getByRole('button', {name: 'Ask to pause'})).toBeVisible();
+  await expect(second.getByRole('button', {name: 'Ask to pause focus'})).toBeVisible();
 
-  await second.getByRole('button', {name: 'Ask to pause'}).click();
+  await second.getByRole('button', {name: 'Ask to pause focus'}).click();
   await expect(first.getByText('Linus asks to pause')).toBeVisible();
   await first.getByRole('button', {name: 'Allow'}).click();
   await expect(first.getByRole('button', {name: 'Resume together'})).toBeVisible();
-  await expect(second.getByRole('button', {name: 'Ask to resume'})).toBeVisible();
+  await expect(second.getByRole('button', {name: 'Ask to resume focus'})).toBeVisible();
 
   await first.getByRole('button', {name: 'Board'}).click();
   await second.getByRole('button', {name: 'Board'}).click();
@@ -49,6 +49,9 @@ test('two people share an authoritative clock and merge their workspace', async 
   await second.getByRole('button', {name: 'Add to shared list'}).click();
   await expect(first.getByText('Test the seam')).toBeVisible();
   await expect(second.getByText('Shape the ritual')).toBeVisible();
+  await second.locator('.task').filter({hasText: 'Shape the ritual'}).getByRole('button', {name: 'Focus next'}).click();
+  await expect(second.getByRole('textbox', {name: 'What are you finishing?'})).toHaveValue('Shape the ritual');
+  await second.getByRole('button', {name: 'Board'}).click();
 
   await second.getByRole('tab', {name: /Notes/}).click();
   await second.getByPlaceholder('Leave a note for later…').fill('Silence can be collaborative.');
@@ -75,7 +78,7 @@ test('a completed focus becomes one durable ember and starts the break', async (
   await page.getByRole('textbox', {name: 'What are you finishing?'}).fill('A verified Block');
   await page.getByRole('button', {name: 'Adjust focus timing'}).click();
   await page.getByRole('spinbutton', {name: 'Focus min'}).fill('0.5');
-  await page.getByRole('button', {name: 'Set room cadence'}).click();
+  await page.getByRole('button', {name: 'Save timing'}).click();
   await page.locator('.tool-dock').getByRole('button', {name: 'Focus'}).click();
   await expect(page.getByRole('textbox', {name: 'What are you finishing?'})).toHaveValue('A verified Block');
   await page.getByRole('button', {name: 'Start focus'}).click();
@@ -111,7 +114,7 @@ test('the Floor holds social activity, opens the Porch, and returns together', a
   await host.getByRole('button', {name: 'Adjust focus timing'}).click();
   await host.getByRole('spinbutton', {name: 'Focus min'}).fill('0.5');
   await host.getByRole('spinbutton', {name: 'Short break min'}).fill('0.5');
-  await host.getByRole('button', {name: 'Set room cadence'}).click();
+  await host.getByRole('button', {name: 'Save timing'}).click();
   await host.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
   await host.getByRole('button', {name: 'Ready'}).click();
   await expect(guest.locator('.person').filter({hasText: 'Maya'}).locator('.posture')).toHaveText('ready');
@@ -127,10 +130,10 @@ test('the Floor holds social activity, opens the Porch, and returns together', a
   await guest.getByRole('button', {name: 'Save for break'}).click();
   await expect(guest.getByLabel('Leave a note for the break')).toHaveValue('');
   await guest.getByRole('button', {name: 'Send sparkles reaction'}).click();
-  await guest.locator('.tool-dock').getByRole('button', {name: 'Scene', exact: true}).click();
-  await expect(guest.getByRole('button', {name: 'Ritual cues off'})).toBeVisible();
   await expect(guest.getByRole('button', {name: 'Social sounds off'})).toBeVisible();
   await guest.getByRole('button', {name: /With you/}).click();
+  await guest.locator('.tool-dock').getByRole('button', {name: 'Scene', exact: true}).click();
+  await expect(guest.getByRole('button', {name: 'Ritual cues off'})).toBeVisible();
   await guest.getByRole('button', {name: 'Quiet everything'}).click();
   await expect(host.getByText('A quiet thought for later')).toHaveCount(0);
   await expect(host.locator('.social-bloom-visual')).toHaveCount(0);
@@ -183,6 +186,7 @@ test('the Floor holds social activity, opens the Porch, and returns together', a
   await guest.getByRole('button', {name: 'Scene', exact: true}).click();
   await expect(guest.getByRole('button', {name: 'View closed'})).toBeVisible();
   await expect(guest.getByRole('button', {name: 'Ritual cues off'})).toBeVisible();
+  await guest.getByRole('button', {name: 'Room', exact: true}).click();
   await expect(guest.getByRole('button', {name: 'Social sounds off'})).toBeVisible();
 
   await hostContext.close();
@@ -245,7 +249,7 @@ test('the room view converges while personal media preferences stay local', asyn
   await expect(hostFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
   await expect(followerFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
   await followerFrame.evaluate((element) => { element.dataset.identity = 'retained'; });
-  await follower.getByRole('button', {name: 'Shared sound muted'}).click();
+  await follower.getByRole('button', {name: 'Background audio muted'}).click();
   expect(await followerFrame.getAttribute('data-identity')).toBe('retained');
 
   await host.getByRole('button', {name: 'Scene'}).click();
@@ -274,7 +278,7 @@ test('the room view converges while personal media preferences stay local', asyn
   await follower.reload();
   await expect(followerFrame).toHaveAttribute('src', /sWasdbDVNvc/);
 
-  await host.getByRole('button', {name: 'Camera controls'}).click();
+  await host.getByRole('button', {name: 'View only'}).click();
   await expect(host.getByRole('button', {name: 'Return to instrument'})).toBeVisible();
   expect(await hostFrame.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe('auto');
   await hostContext.close();
@@ -296,11 +300,11 @@ test('Floor additions stay quiet, then the Listening Deck opens once in canonica
 
   await ada.getByRole('button', {name: 'Adjust focus timing'}).click();
   await ada.getByRole('spinbutton', {name: 'Focus min'}).fill('0.5');
-  await ada.getByRole('button', {name: 'Set room cadence'}).click();
+  await ada.getByRole('button', {name: 'Save timing'}).click();
   await ada.locator('.tool-dock').getByRole('button', {name: 'Focus'}).click();
   await ada.getByRole('button', {name: 'Start together'}).click();
   await expect(ada.getByRole('button', {name: 'Pause together'})).toBeVisible();
-  await expect(lin.getByRole('button', {name: 'Ask to pause'})).toBeVisible();
+  await expect(lin.getByRole('button', {name: 'Ask to pause focus'})).toBeVisible();
 
   await Promise.all([
     ada.getByRole('button', {name: 'Scene'}).click(),
