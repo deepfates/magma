@@ -1,6 +1,7 @@
 node_modules
 dist
 .partykit
+.wrangler
 .env
 .env.*
 !.env.example

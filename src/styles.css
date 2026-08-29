@@ -32,8 +32,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .living-window-caption span { text-transform: uppercase; letter-spacing: .12em; font-size: 9px; }
 .living-window-caption strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .quiet-field { position: relative; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; color: #93968f; background: #101211; }
-.quiet-field .lava { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .54; }
-.quiet-field > span { position: relative; text-transform: uppercase; letter-spacing: .16em; font-size: 10px; }
+.quiet-field .lava { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .74; }
+.quiet-field > span { position: relative; padding: 7px 10px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; text-transform: uppercase; letter-spacing: .18em; font-size: 9px; background: rgba(5,5,7,.34); backdrop-filter: blur(10px); }
 
 .instrument-rail { position: fixed; inset: 0; z-index: 2; display: flex; flex-direction: column; pointer-events: none; }
 .instrument-header { position: fixed; left: 16px; right: 16px; top: 14px; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 14px; pointer-events: none; }
@@ -98,11 +98,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .block-aim input::placeholder { color: rgba(255,255,255,.72); }
 .icon-button { display: grid; place-items: center; padding: 7px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; }
 .icon-button:hover { color: var(--ink); background: var(--field); }
-.proposal { margin-bottom: 14px; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 10px; }
-.proposal > span { display: flex; align-items: center; gap: 6px; }
-.proposal > div { display: flex; gap: 6px; margin-top: 8px; }
-.proposal button { padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--field); cursor: pointer; font-size: 9px; }
-.proposal small { display: block; margin-top: 6px; color: var(--muted); }
 
 .completion-ritual { position: relative; text-align: left; }
 .completion-close { position: absolute; right: 0; top: 0; }
@@ -165,6 +160,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .inline-controls button:hover, .inline-controls button.selected { color: var(--ink); background: var(--field); }
 .inline-controls label { display: flex; align-items: center; gap: 7px; color: var(--dim); font-size: 9px; }
 .inline-controls input { width: 82px; accent-color: var(--accent); }
+.background-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 11px; }
+.background-modes button { display: grid; place-items: center; gap: 7px; min-height: 66px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: rgba(255,255,255,.018); cursor: pointer; font-size: 10px; transition: transform .16s ease, border-color .16s ease, color .16s ease, background .16s ease; }
+.background-modes button:hover { transform: translateY(-1px); color: var(--ink); border-color: var(--line-strong); }
+.background-modes button[aria-pressed="true"] { color: #10120f; border-color: var(--accent); background: var(--accent); box-shadow: 0 8px 28px rgba(221, 255, 159, .11); }
 .cue-deck { display: grid; grid-template-columns: 1fr 1fr; }
 .cue-deck button { display: grid; grid-template-columns: 27px 1fr; align-items: center; gap: 7px; min-height: 52px; padding: 9px 4px; border: 0; border-bottom: 1px solid var(--line); text-align: left; color: var(--muted); background: transparent; cursor: pointer; }
 .cue-deck b { color: var(--accent); font-weight: 500; }
@@ -216,8 +215,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .posture { color: var(--accent); text-transform: uppercase; letter-spacing: .08em; }
 .person[data-posture='away'] { opacity: .55; }
 .person[data-posture='ready'] .avatar { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 36%, transparent); }
-.host-crown { color: var(--focus); }
-.host-transfer { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 3px; color: var(--dim); background: transparent; cursor: pointer; }
 .pulse { width: 5px; height: 5px; border-radius: 50%; background: #9ed9ac; }
 .presence-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 11px; }
 .presence-choices button { min-height: 44px; padding: 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--dim); background: transparent; cursor: pointer; font-size: 10px; }
@@ -330,4 +327,86 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 @media (forced-colors: active) {
   * { forced-color-adjust: auto; }
   .tool-dock button.active, .mode-switcher button.active, .scene-option.selected { outline: 2px solid Highlight; outline-offset: -2px; }
+}
+
+/* The Porch: one world, one shared glass, one shelf. */
+.porch-shell { position: fixed; inset: 0; overflow: hidden; color: #f6f3e9; background: #090b0a; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.porch-world, .porch-glow { position: absolute; inset: 0; }
+.porch-world::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(4,7,6,.38), transparent 24%, transparent 70%, rgba(3,5,4,.46)); }
+.porch-glow { display: grid; place-items: center; background: #101411; }
+.porch-glow span { position: absolute; right: 18px; bottom: 16px; z-index: 1; color: rgba(255,255,255,.45); font: 9px/1 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+.porch-header { position: fixed; left: 18px; right: 18px; top: 16px; z-index: 20; display: flex; align-items: flex-start; justify-content: space-between; pointer-events: none; }
+.porch-header button { pointer-events: auto; }
+.porch-place { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 10px 7px 7px; color: inherit; border: 1px solid rgba(255,255,255,.2); border-radius: 14px; background: rgba(9,12,10,.58); backdrop-filter: blur(18px) saturate(1.2); box-shadow: 0 8px 30px rgba(0,0,0,.12); cursor: pointer; text-align: left; }
+.porch-place > span:last-child { display: grid; gap: 2px; }
+.porch-place strong { font: 600 13px/1.1 Georgia, serif; letter-spacing: .02em; }
+.porch-place small { overflow: hidden; max-width: min(420px, 48vw); color: rgba(255,255,255,.63); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.porch-mark { display: grid; place-items: center; width: 30px; height: 30px; color: #1b211b; border-radius: 10px; background: #d9f0a8; font: italic 700 17px Georgia, serif; }
+.porch-company { display: flex; gap: 7px; }
+.porch-company button { display: flex; align-items: center; gap: 6px; min-height: 42px; padding: 8px 11px; color: inherit; border: 1px solid rgba(255,255,255,.18); border-radius: 13px; background: rgba(9,12,10,.58); backdrop-filter: blur(18px); cursor: pointer; font-size: 10px; }
+.porch-company .invite-button { color: #182017; border-color: transparent; background: #d9f0a8; font-weight: 700; }
+.porch-canvas-adapter { position: absolute; inset: 0; z-index: 5; transition: opacity .25s ease; }
+.porch-canvas-adapter.glass-hidden { opacity: 0; pointer-events: none; }
+.porch-canvas-adapter .tl-container { background: transparent !important; }
+.porch-canvas-adapter .tl-background { background: rgba(8, 11, 9, .08) !important; }
+.porch-canvas-adapter .tl-canvas { background: transparent !important; }
+.porch-canvas-adapter .tl-watermark_SEE-LICENSE { opacity: .55; }
+.porch-fixed-clock { position: fixed; right: 18px; top: 72px; z-index: 18; display: grid; min-width: 148px; padding: 11px 13px; color: #f6f3e9; border: 1px solid rgba(255,255,255,.2); border-radius: 15px; background: rgba(7,10,8,.62); backdrop-filter: blur(18px); pointer-events: auto; }
+.porch-fixed-clock small { color: rgba(255,255,255,.5); font: 7px/1 ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; }
+.porch-fixed-clock strong { margin: 4px 0 7px; font: 400 28px/1 ui-monospace, monospace; letter-spacing: -.07em; }
+.porch-fixed-clock div { display: flex; gap: 5px; }
+.porch-fixed-clock button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 29px; padding: 5px 9px; color: #172016; border: 0; border-radius: 8px; background: #d9f0a8; cursor: pointer; font-size: 9px; font-weight: 700; }
+.porch-fixed-clock button:last-child { width: 30px; padding: 0; color: rgba(255,255,255,.74); border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); }
+.porch-tools { position: fixed; left: 50%; bottom: 18px; z-index: 30; display: flex; gap: 4px; padding: 5px; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.2); border-radius: 17px; background: rgba(8,11,9,.68); box-shadow: 0 15px 45px rgba(0,0,0,.24); backdrop-filter: blur(20px); }
+.porch-tools button { display: grid; place-items: center; gap: 3px; min-width: 54px; min-height: 48px; padding: 6px 10px; color: rgba(255,255,255,.58); border: 0; border-radius: 12px; background: transparent; cursor: pointer; }
+.porch-tools button:hover { color: #fff; background: rgba(255,255,255,.08); }
+.porch-tools button.active { color: #172016; background: #d9f0a8; }
+.porch-tools span { font-size: 8px; }
+.porch-connection { position: fixed; right: 18px; bottom: 19px; z-index: 20; display: flex; align-items: center; gap: 6px; padding: 8px 10px; color: rgba(255,255,255,.62); border-radius: 12px; background: rgba(8,11,9,.5); backdrop-filter: blur(12px); font: 9px/1 ui-monospace, monospace; }
+.porch-connection > span { width: 6px; height: 6px; border-radius: 50%; background: #d47b65; }
+.porch-connection > span.online { background: #bce47f; box-shadow: 0 0 9px rgba(188,228,127,.55); }
+.porch-tuner { position: fixed; left: 18px; right: 18px; top: 76px; z-index: 40; padding: 18px; color: #f6f3e9; border: 1px solid rgba(255,255,255,.2); border-radius: 22px; background: rgba(8,11,9,.86); box-shadow: 0 28px 80px rgba(0,0,0,.45); backdrop-filter: blur(28px) saturate(1.2); }
+.tuner-heading, .sidecar-heading { display: flex; align-items: flex-start; justify-content: space-between; }
+.tuner-heading small, .sidecar-heading small { color: #b4cd81; font: 8px ui-monospace, monospace; letter-spacing: .16em; }
+.tuner-heading h2, .sidecar-heading h2 { margin: 4px 0 14px; font: 400 24px/1 Georgia, serif; }
+.tuner-heading > button, .sidecar-heading > button { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; color: rgba(255,255,255,.65); border: 1px solid rgba(255,255,255,.14); border-radius: 11px; background: transparent; cursor: pointer; }
+.tuner-shelf { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+.tuner-shelf > button { display: grid; grid-template-columns: 32px 1fr; grid-template-rows: auto auto; gap: 3px 9px; min-height: 78px; padding: 11px; color: inherit; border: 1px solid rgba(255,255,255,.13); border-radius: 14px; background: rgba(255,255,255,.04); cursor: pointer; text-align: left; }
+.tuner-shelf > button.active { border-color: #d9f0a8; background: rgba(217,240,168,.09); }
+.tuner-shelf > button > span { grid-row: 1 / 3; display: grid; place-items: center; width: 32px; height: 32px; color: #152017; border-radius: 10px; }
+.tuner-shelf .glow-chip { color: #fff; background: linear-gradient(135deg,#e27368,#7b65d2); }
+.tuner-shelf .quiet-chip { color: rgba(255,255,255,.7); background: #303431; }
+.tuner-shelf strong { align-self: end; font: 500 12px/1.15 Georgia, serif; }
+.tuner-shelf small { color: rgba(255,255,255,.48); font-size: 8px; line-height: 1.3; }
+.tuner-compose { display: flex; gap: 7px; margin-top: 9px; }
+.tuner-compose input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; color: inherit; border: 1px solid rgba(255,255,255,.15); border-radius: 11px; outline: 0; background: rgba(0,0,0,.22); }
+.tuner-compose input:focus { border-color: #d9f0a8; }
+.tuner-compose button, .tuner-local button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 12px; color: inherit; border: 1px solid rgba(255,255,255,.15); border-radius: 11px; background: rgba(255,255,255,.06); cursor: pointer; font-size: 10px; }
+.tuner-local { display: flex; align-items: center; gap: 7px; margin-top: 8px; }
+.tuner-local small { margin-left: auto; color: rgba(255,255,255,.52); font-size: 9px; }
+.porch-sidecar { position: fixed; top: 16px; right: 16px; bottom: 16px; z-index: 50; width: min(370px, calc(100vw - 32px)); overflow-y: auto; padding: 18px; color: #f6f3e9; border: 1px solid rgba(255,255,255,.2); border-radius: 22px; background: rgba(8,11,9,.9); box-shadow: 0 30px 80px rgba(0,0,0,.5); backdrop-filter: blur(28px); }
+.porch-people { display: grid; gap: 7px; margin-bottom: 16px; }
+.porch-people > div { display: grid; grid-template-columns: 36px 1fr; gap: 9px; align-items: center; padding: 7px; border-radius: 12px; background: rgba(255,255,255,.045); }
+.porch-people > div > span { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--person-color); border-radius: 50%; background: rgba(255,255,255,.04); }
+.porch-people p { display: grid; gap: 2px; margin: 0; }
+.porch-people strong { font-size: 11px; }
+.porch-people small { color: rgba(255,255,255,.48); font-size: 9px; }
+.porch-sidecar .porch-composer { background: linear-gradient(to bottom, transparent, rgba(8,11,9,.98) 12px); }
+.porch-share-copy { display: grid; gap: 6px; margin-top: 16px; color: rgba(255,255,255,.55); font-size: 9px; }
+.porch-share-copy textarea { min-height: 88px; padding: 9px; resize: vertical; color: #fff; border: 1px solid rgba(255,255,255,.15); border-radius: 10px; background: rgba(0,0,0,.22); font: 9px/1.4 ui-monospace, monospace; }
+
+@media (max-width: 700px) {
+  .porch-header { left: 10px; right: 10px; top: 10px; }
+  .porch-company button span { display: none; }
+  .porch-company button { width: 42px; padding: 0; justify-content: center; }
+  .porch-place small { max-width: 42vw; }
+  .porch-tuner { left: 10px; right: 10px; top: 68px; max-height: calc(100dvh - 146px); overflow-y: auto; padding: 14px; }
+  .tuner-shelf { grid-auto-columns: 145px; }
+  .tuner-compose { display: grid; }
+  .tuner-local { flex-wrap: wrap; }
+  .tuner-local small { width: 100%; margin-left: 0; }
+  .porch-fixed-clock { right: 10px; top: 66px; }
+  .porch-tools { bottom: 10px; }
+  .porch-tools button { min-width: 48px; }
+  .porch-connection { display: none; }
 }

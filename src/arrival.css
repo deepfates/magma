@@ -105,66 +105,17 @@
 .arrival-reconnecting strong { color: #f1f0eb; }
 .arrival-reconnecting button { min-height: 32px; margin-left: 5px; padding: 4px 7px; border: 0; color: #9c9d98; background: transparent; cursor: pointer; font-size: 10px; }
 
-.room-access { position: relative; margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(241, 240, 235, .13); }
-.room-access-details { margin-top: 24px; border-top: 1px solid rgba(241, 240, 235, .13); }
-.room-access-details > summary { min-height: 44px; padding: 14px 0; color: #9c9d98; cursor: pointer; font-size: 11px; }
-.room-access-details[open] > summary { color: #f1f0eb; }
-.room-access-details > .room-access { margin-top: 0; padding-top: 6px; border-top: 0; }
-.room-access-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
-.room-access-heading p { margin: 0 0 3px; color: #8a8d86; text-transform: uppercase; letter-spacing: .11em; font-size: 8px; }
-.room-access-heading h3 { margin: 0; font-size: 16px; font-weight: 560; }
-.room-role { padding: 4px 6px; color: #d9f0a8; border: 1px solid rgba(217, 240, 168, .24); border-radius: 999px; text-transform: capitalize; font-size: 9px; }
-.room-access-role-copy { color: #9c9d98; font-size: 12px; }
-.room-invitation-state { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; gap: 9px; min-height: 52px; margin-top: 12px; border-bottom: 1px solid rgba(241, 240, 235, .13); }
-.room-invitation-state strong, .room-invitation-state small { display: block; }
-.room-invitation-state strong { font-size: 11px; }
-.room-invitation-state small { margin-top: 2px; color: #8a8d86; font-size: 9px; }
-.room-access-dot { width: 7px; height: 7px; border-radius: 50%; background: #d5a15e; }
-.room-access-dot.active { background: #9ed9ac; }
-.room-access-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
-.room-access-role-select { display: grid; gap: 5px; margin-top: 10px; color: #9c9d98; font-size: 9px; }
-.room-access-role-select select { min-height: 40px; padding: 7px 9px; border: 1px solid rgba(241, 240, 235, .16); border-radius: 4px; color: #f1f0eb; background: #0c0e0d; }
-.room-access-role-select select:focus-visible { outline: 2px solid #f4d58d; outline-offset: 2px; }
-.room-access-actions button,
-.room-access-confirm-actions button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 8px;
-  border: 1px solid rgba(241, 240, 235, .15);
-  border-radius: 4px;
-  color: #b2b3ae;
-  background: transparent;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 10px;
-}
-.room-access-actions button:disabled, .room-access-confirm-actions button:disabled { cursor: not-allowed; opacity: .48; }
-.room-access-actions button:focus-visible, .room-access-confirm-actions button:focus-visible { outline: 2px solid #f4d58d; outline-offset: 2px; }
-.room-access-notice { min-height: 14px; margin: 7px 0 0; color: #8a8d86; font-size: 9px; line-height: 1.4; }
-.room-access-confirm-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(5, 7, 6, .62); }
-.room-access-confirm { width: min(380px, 100%); padding: 22px; border: 1px solid rgba(241, 240, 235, .2); border-radius: 6px; outline: 0; background: #111312; box-shadow: 0 18px 70px rgba(0, 0, 0, .5); }
-.room-access-confirm h4 { margin: 0; font-size: 19px; font-weight: 560; }
-.room-access-confirm h4:focus { outline: 0; }
-.room-access-confirm p { color: #9c9d98; font-size: 12px; line-height: 1.5; }
-.room-access-confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 18px; }
-.room-access-confirm-actions .danger { color: #19100e; border-color: #e6b2a6; background: #e6b2a6; font-weight: 650; }
-
 @media (max-width: 520px) {
   .arrival-overlay { align-items: end; padding: 10px; }
   .arrival-veil { max-height: calc(100dvh - 20px); padding: 22px 18px; border-radius: 8px 8px 4px 4px; }
   .arrival-actions { display: grid; }
-  .room-access-actions { grid-template-columns: 1fr; }
-  .room-access-confirm-actions { grid-template-columns: 1fr; }
   .arrival-reconnecting { top: 102px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .arrival-overlay, .arrival-veil, .arrival-reconnecting, .room-access-confirm { scroll-behavior: auto; }
+  .arrival-overlay, .arrival-veil, .arrival-reconnecting { scroll-behavior: auto; }
 }
 
 @media (forced-colors: active) {
-  .arrival-overlay, .arrival-veil, .room-access-confirm, .arrival-primary, .room-role { forced-color-adjust: auto; }
+  .arrival-overlay, .arrival-veil, .arrival-primary { forced-color-adjust: auto; }
 }

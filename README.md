@@ -1,105 +1,102 @@
-# Magma
+# The Porch
 
-Magma is a private shared focus room: see who is here, name one outcome, work to one shared clock against a quiet living view, and talk at the break. The product should feel calm enough to live beside and crisp enough to operate deliberately; its technical systems exist to make that simple ritual trustworthy.
+The Porch is a persistent window onto the world that friends can leave things on.
 
-- **Live:** [magma-one-azure.vercel.app](https://magma-one-azure.vercel.app)
-- **Room service:** `magma-focus.deepfates.partykit.dev`
+Open one link together. The viewport is a live view or a slow field of light. Over it is shared glass: draw, leave a note, talk, change the view, run the same clock, and return later to find the intentional marks still there. Every admitted person has the same direct product capabilities. Sound, reduced sensory mode, and whether the glass is visible remain personal.
 
-## The product test
+- **Live Porch:** [magma-one-azure.vercel.app](https://magma-one-azure.vercel.app)
+- **Room authority:** `magma-focus.deepfates.partykit.dev`
 
-A new person should be able to make a room, invite someone, name one thing they want to finish, start together, enjoy the shared quiet, meet naturally at the break, and want to do it again. Work that does not materially improve that experience—or the trustworthiness of the path beneath it—is not the next priority. The detailed constraints below guard the experience; they are not a feature checklist or a reason to turn Magma into a collaboration suite.
+The production alias runs the Porch client and its coordinated PartyKit room/canvas bundle. Magma now names the native Glow atmosphere, not the product.
 
-## Definition of finished — the intended 1.0 endpoint
+## Product test
 
-Magma 1.0 is finished when a trusted group of two to eight people can return to it as a place, not merely operate it as a timer. A first-time visitor should understand the room without instruction: see who is there, name one outcome, start the shared clock, work against the living view, and talk when focus ends.
+Two people who know nothing about the project should be able to follow one invitation, recognize that they share a place, see one another there, draw and write on the same glass, move or remove what either person left, change the world behind it, start the same clock, reload, and find the place intact.
 
-The depth belongs in four predictable places:
+The small product grammar is:
 
-- **Focus:** the current outcome, shared clock, start, completion, and return.
-- **Scene:** live views, YouTube videos and playlists, the shared background queue, local sound, and one action that makes the device quiet.
-- **Room:** presence, invitations, break-time conversation, reactions, and eventually opt-in voice when it can be dependable and private.
-- **Board:** later work, durable notes, and unfinished outcomes carried forward from a focus.
+- **window** — a shared live view, video, playlist, or native atmosphere;
+- **glass** — a persistent spatial surface directly over the world;
+- **instruments** — a few shared, legible controls such as the clock;
+- **people** — presence, invitation, and lightweight conversation.
 
-The first screen stays spare; the room becomes deeper when a person reaches for it. That is progressive disclosure, not a smaller product. Shared controls must say what they change, personal controls must never affect another person, and joining must never interrupt the clock or scene.
+Porch is not a productivity-suite dashboard and it is not a reskinned generic whiteboard. The product owns this grammar and the restrained one-screen composition. Specialist libraries own the difficult mechanics underneath it.
 
-Magma 1.0 is not complete until separate people can exercise the full create → invite → focus → break → return loop on desktop and phone; timer, queue, Board, presence, and conversation converge across browsers and reconnects; access is enforced by the server; quiet and reduced-sensory use are complete paths; and a clean checkout can reproduce the deployed behavior. Automated tests establish mechanics. Fresh users must still be able to operate the deployed room without coaching, correctly explain what is shared versus local, discover the deeper features, and want to return.
+## Implemented now
 
-Magma is not video chat, public community discovery, an attendance system, or a competitive productivity game. It has no streaks, rankings, read receipts, surprise audio, or engagement debt. Expressiveness belongs at arrival, start, completion, and break; focus itself should get quieter over time.
+- A full-window Treasure Island view by default, with curated Bay and NASA sources, arbitrary YouTube videos/playlists, native WebGL Glow, and Quiet.
+- A real tldraw document surface for notes, drawing, selection, manipulation, undo/history, camera behavior, and collaborator presence.
+- tldraw's native sync protocol backed by its official `TLSocketRoom`, with official room snapshots persisted by a dedicated PartyKit canvas party.
+- A narrow `PorchCanvas` adapter that supplies Porch identity and tools, removes the generic whiteboard chrome, and leaves the native editor reachable through ordinary canvas gestures and shortcuts.
+- Self-hosted tldraw fonts, translations, icons, and embed assets using tldraw's official Vite asset package rather than a hidden CDN dependency.
+- Lazy editor loading after the Porch admission threshold; the arrival surface does not import or mount the canvas engine.
+- Any admitted person can create, edit, move, and delete canvas objects; operate the clock; choose the shared media source; write in the room; and create another invitation.
+- PartyKit authorities for room admission, people/chat, the shared clock, and media intent. Wall time and playback remain outside document history because they are temporal state, not canvas edits.
+- Local-only glass visibility, Glow/Quiet presentation, mute, volume, and synthesized warm sound.
+- Existing TinyBase task and spark tables retained for non-destructive migration. They are not a second canvas or collaboration model.
 
-## What is real
+## Architecture
 
-- Opening Magma without a room creates a private room URL. The first device claims it with a non-extractable, room-scoped P-256 key stored in IndexedDB; returning admission proves that key rather than trusting an editable profile or browser URL. After creation, the owner can copy an invitation or continue alone.
-- Owners and stewards can create role-scoped, expiring invitation capabilities. The room address and invitation code remain separate, rotation is atomic, and owners can revoke a member across all connected tabs. Revocation stops shared media, clears visible room state, and removes that room's local workspace cache.
-- The PartyKit worker enforces admission before the WebSocket reaches room code, strips client-supplied trusted headers, issues a fresh 30-second one-use ticket for every reconnect, and rechecks durable membership before revealing snapshots. Existing named rooms remain legacy-open instead of being silently claimed.
-- PartyKit owns the canonical timer state. Server alarms settle elapsed phases exactly once; clients derive the display from a sampled server-time offset instead of broadcasting every second.
-- PartyKit separately owns room-media transport and the background queue, with independent revisions. Queue entries have server-authored IDs, ordering, timestamps, contributor attribution, bounded persistence, idempotent operation receipts, and open or stewarded control. The YouTube IFrame API projects the active transport locally and corrects material VOD drift without feeding those corrections back into the room.
-- The first member present holds timer authority across all of their tabs. Everyone else can propose a timer change; the host can approve it or hand over control, and host loss triggers a deterministic handoff. Non-guest members can contribute to the queue; owners choose whether everyone or only stewards can reorder and select.
-- Focus completion creates one durable session record, sounds an optional synthesized local chime, and can automatically begin the shared break. The latest 24 records survive reloads.
-- People have stable local profiles. Board tasks support ownership, while CRDT notes preserve useful context without turning the room conversation into a permanent archive.
-- Room carries presence, conversation, and reactions through the full focus → break → return loop. Messages written during focus wait without badges or interruption and appear at the break; useful messages can be saved to the Board. Readiness informs but never gates or auto-starts the next focus. A sender keeps their draft until the server acknowledges the exact operation, and conversation clears only when focus actually begins again.
-- Reactions and semantic room signals are phase-aware. During focus they produce no recipient event, badge, sound, or animation; completion releases only an aggregate summary. Reconnect restores that summary as calm text without replaying transient motion or sound. During breaks, signals arrive immediately. Peer audio is a separate local opt-in, off by default, and traffic is limited per member and per room.
-- A manual reset, mode change, or cadence change returns the room to gathering: accepted words become visible, while transient reactions and signals are discarded rather than presented as a completion celebration.
-- Tasks and sparks live in a TinyBase `MergeableStore`, persist to IndexedDB, and synchronize through the authenticated room socket. The server validates, canonicalizes, restamps, and durably stores accepted CRDT content; guests are read-only, author identity is server-bound, and hostile future clocks cannot dominate the room.
-- Warm noise is synthesized locally with Web Audio. Wake Lock and opt-in completion notifications are progressive enhancements; no audio assets or tracking services are bundled.
-- A dominant living view opens on the Treasure Island panorama from Mersea/Teleport and also accepts ABC7’s Treasure Island camera, TrazCam, NASA’s ISS feed, and standard YouTube video or playlist links. The deck policy governs source selection; non-guest participants can steer the separate shared transport. Both authorities converge across browsers and survive reconnects. Instrument mode cover-crops the embed; Camera Controls clears the instrument and exposes shared playback controls.
-- The shared clock and four stable surfaces—Focus, Board, Scene, and Room—sit over the living view. Timing opens directly from the clock instead of competing as another destination. The clock remains reachable while a surface is open; drafts and shared state survive responsive posture changes.
-- Scene keeps the active source, attribution, ordered background queue, policy, quick sources, and YouTube URL addition together. Focus-time additions are accepted without changing anyone’s view and become available at the break. Queue-level automatic advance is deliberately absent because live feeds and provider playlists do not provide trustworthy server-side endings.
-- Scene keeps its authority boundary visible and operational: source and playback belong to the room; mute, visibility, synthesized warm noise, cue preferences, and sensory reduction stay on the individual device and never enter shared state.
-- Before focus, a person names one visible outcome. Changing the room timing no longer erases it. When focus ends, the person can mark it finished or carry it directly onto the shared Board.
-- The WebGL field is a fallback when the living view is closed. It pauses when hidden and respects reduced motion; it is atmosphere, not the product identity.
+The design follows Interface Lab's engine-adapter idiom:
 
-## Productivity grammar
+```text
+Porch product surface
+  ├─ PorchCanvas adapter ── tldraw editor + native presence/history
+  │                         └─ tldraw sync party + PartyKit persistence
+  └─ Porch room model ───── PartyKit clock, media, chat, admission
+```
 
-The useful parts of *How to Do Things v1.0* and Bullet Journal appear as behavior, not terminology: choose a concrete outcome, focus, then either finish it or migrate it. The Board holds later work so the timer does not become a task manager. The room supplies presence, not surveillance, and begins again without streak debt.
+The application owns room identity, product tools, media meaning, and temporal authorities. tldraw owns its document schema, hit testing, gestures, rendering, camera, history, and sync protocol. Porch does not build parallel versions of those mechanisms or serialize editor internals into PartyKit.
 
-Signals follow the same boundary. They carry shared meaning while each receiver chooses sound or silence; audio is off until chosen, and “quiet everything” is a complete setup. Magma is an instrument a person operates, not an optimizer that operates on the person.
-
-## Interface laws and reuse boundaries
-
-- TinyBase remains scoped to independently editable shared workspace data. The clock and continuous media transport are separate server-authoritative state machines because converging text edits, agreeing on wall time, and anchoring playback are different problems.
-- The render architecture follows Interface Lab’s artifact-first hierarchy, lightest-boundary rule, stable surface identity, and capability-preserving responsive postures. Its private pre-1.0 Svelte packages are not imported into this React app; the product laws transfer, not framework machinery or unlicensed source.
-- Web Audio and the YouTube IFrame API remain native integrations. Adding a larger framework for either would increase architecture without increasing the capability.
-- Starred projects such as ENTHEA informed sensory-safety ideas but are not copied into Magma; its AGPL license and different product shape make inspiration the correct reuse boundary.
-
-## Run two-player locally
+## Exercised evidence
 
 ```sh
 npm install
-npm run dev
-```
-
-Open the same URL (including its `?room=` value) in two browser windows. The web app runs on `http://localhost:5173`; the PartyKit room runs on port `1999`.
-
-New UUID rooms open behind the arrival veil. Create the room in the first browser, then share both the room URL and the separately displayed invitation code with the second browser. Named pre-existing rooms continue in legacy-open mode.
-
-```sh
 npm run check
 ```
 
-This runs timer, media, queue, conversation, access, and YouTube URL tests; TypeScript and a production build; and real Chromium multiplayer tests covering clock authority across tabs, CRDT convergence, reconnect durability, host handoff, completion, focus-time quiet, break-time release, saving messages and unfinished outcomes to the Board, two-way media control, concurrent queue additions, personal-preference isolation, responsive surface continuity, phone layout, and automated accessibility checks.
+The automated browser journeys use separate isolated Chromium contexts and real tldraw gestures. They exercise:
 
-## Put rooms online
+- one person leaving a note and another moving and deleting it;
+- cross-browser convergence, reload persistence, and the native tldraw sync party;
+- either person starting and pausing the shared clock;
+- either person changing the shared window while glass and atmosphere choices remain local;
+- protected-room creation, invitation, device-proof return, invitation by a second person, and a third person's convergent note;
+- a phone viewport and accessibility inspection of the primary product controls.
 
-Provision the worker's internal pre-admission secret once, deploy the worker, then point the web build at it:
+A separate browser-control pass also created a tldraw note through the visible Porch surface and found no console errors. These prove bounded mechanics. They do not yet prove broad desirability or long-lived public operation.
+
+## Run locally
 
 ```sh
-npx partykit env add MAGMA_INTERNAL_SECRET
-npm run deploy:room
-VITE_PARTYKIT_HOST=magma-focus.deepfates.partykit.dev npm run build
+npm run dev
 ```
 
-`MAGMA_INTERNAL_SECRET` must be at least 32 characters and must stay in PartyKit's environment store; do not put it in source, Vite variables, or deployment arguments. Host `dist/` on an allowed HTTPS origin. Additional client origins must be listed exactly in `MAGMA_ALLOWED_ORIGINS` before deployment.
+Open the same `?room=` URL in separate browser profiles. The local services are:
 
-Private-room production admission is real, but one transport caveat remains: browser WebSockets cannot set an arbitrary authorization header, and this PartyKit version does not negotiate the asynchronous admission subprotocol correctly. The client therefore places only a 30-second, one-use admission ticket in the WebSocket handshake query and the worker consumes and strips it before room code. Invitation capabilities, signing keys, and profile fields never enter URLs. Eliminating even that ephemeral query credential—through a same-site cookie/custom-domain boundary or a runtime with correct subprotocol negotiation—remains required before the stricter 1.0 “no secrets in URLs” gate can be claimed.
+- Vite client: `http://127.0.0.1:5173`
+- PartyKit room authority: port `1999`
+- tldraw canvas party: `/parties/canvas/:room` on the same PartyKit service
 
-`npm audit` currently reports five advisories inherited through PartyKit's local Miniflare/esbuild toolchain (four moderate, one high) with no non-breaking npm remediation. They do not appear in the Vite browser bundle, but the room toolchain should be upgraded or migrated with PartyKit's Cloudflare successor before treating this as a hardened public service.
+## Current limits and unknowns
 
-## Architecture boundary
+- The current tldraw SDK displays its required production watermark unless `VITE_TLDRAW_LICENSE_KEY` is supplied under an appropriate tldraw license. The project does not bypass it.
+- Canvas assets currently use tldraw's inline base64 prototype store. Images and other large assets need a real object-storage adapter before they are product-ready.
+- Protected canvas connections obtain a fresh one-time admission ticket and the canvas party asks the main room authority to consume it before accepting the websocket. Legacy rooms retain their historical open behavior.
+- The shared clock is a fixed Porch instrument. Moving high-frequency clock state into document history would be the wrong abstraction; a future spatial clock needs a custom tldraw shape whose geometry is documentary while time remains server-authoritative.
+- A true arbitrary shared browser cannot be an iframe feature: sites can refuse embedding, and proxying authenticated browsing introduces cookie, security, rights, and operating-cost boundaries. The honest near-term model is supported embeds plus shared links and media objects.
+- YouTube should become an unobscured media window before broad distribution. The current overlay is retained for the owner's personal prototype and is not claimed as a generally compliant integration.
+- Production telemetry, nuisance-participant testing, canvas compaction under long-lived use, and representative human return behavior remain unknown.
+- The local PartyKit toolchain reports five npm advisories. They do not appear in the Vite browser bundle, but the room toolchain needs an upgrade or migration before hardened public use is claimed.
 
-The CRDT owns independently editable workspace data. The clock, media transport, and Listening Deck use independent PartyKit revisions. Queue transport is server-sequenced rather than modeled as a CRDT because accepted order, attribution, policy, and disruptive activation need one room authority. Enqueue is idempotent and intentionally does not require a queue revision, so concurrent additions both survive; reorder, removal, selection, and policy are revision-bound so stale structural intent loses explicitly instead of silently overwriting. Playback commands bind both transport revision and active deck item. A phase boundary that activates a staged item commits timer, social state, deck, media, and alarm atomically. Local mute or sensory changes cannot enter shared state. The pure domains live in `src/domain/timer.ts`, `src/domain/media.ts`, and `src/domain/mediaQueue.ts`, shared by the PartyKit worker and their tests.
+## Deploy
 
-For ordinary videos and playlists, browsers converge to a server-anchored position within a practical buffering tolerance. For YouTube live cameras, synchronization means the same source and live-playback intent—not the same encoded frame, because provider latency and ads can differ by client.
+Provision `MAGMA_INTERNAL_SECRET` in PartyKit, then deploy all three runtime surfaces:
 
-The current deployed slice is a signed, revocable private focus room with an exercised first Floor → Porch → Floor loop and Listening Deck, not yet the complete social salon defined for 1.0 above. Bounded paginated communication and moderation history, real SFU/TURN voice, finer-grained policy for transport/text/soundboard/voice, production telemetry, broader nuisance-participant coverage, and representative human salon evidence remain incomplete.
+```sh
+npm run deploy:room
+VITE_PARTYKIT_HOST=magma-focus.deepfates.partykit.dev npm run build
+npx vercel --prod
+```
 
-The cover-cropped YouTube composition is intended for this personal instrument, not claimed as a generally distributable integration. The render layer keeps a clean media boundary so a licensed native HLS/WebRTC/video source can later replace it without changing the clock, room, ritual, or workspace authorities.
+The secret must be at least 32 characters and remain in PartyKit's environment store. Additional web origins must be listed in `MAGMA_ALLOWED_ORIGINS`. A production asset store and long-running operational evidence remain required before calling the public deployment hardened.

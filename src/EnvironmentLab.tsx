@@ -3,23 +3,19 @@ import {ChevronDown, ChevronUp, Eye, EyeOff, Radio, Trash2, Volume2, VolumeX} fr
 import {parseYouTubeSource, SCENE_PRESETS, type YouTubeSource} from './domain/youtube';
 import type {useAmbientAudio} from './useAmbientAudio';
 import type {useYouTubeBackdrop} from './useYouTubeBackdrop';
-import {canArrangeQueue, canRemoveQueueItem, type DeckPolicy, type MediaQueueState} from './domain/mediaQueue';
-import type {AuthRole} from './domain/auth';
+import type {MediaQueueState} from './domain/mediaQueue';
 
 export function EnvironmentLab({
-  backdrop, audio, queue, role, memberId, floor, addSource, moveItem, removeItem, selectItem, setPolicy,
+  backdrop, audio, queue, floor, addSource, moveItem, removeItem, selectItem,
 }: {
   backdrop: ReturnType<typeof useYouTubeBackdrop>;
   audio: ReturnType<typeof useAmbientAudio>;
   queue: MediaQueueState;
-  role: AuthRole;
-  memberId: string;
   floor: boolean;
   addSource: (source: YouTubeSource, activate?: boolean) => void;
   moveItem: (itemId: string, beforeItemId: string | null) => void;
   removeItem: (itemId: string) => void;
   selectItem: (itemId: string) => void;
-  setPolicy: (policy: DeckPolicy) => void;
 }) {
   const [draft, setDraft] = useState('');
   const [deckStatus, setDeckStatus] = useState('');
@@ -43,7 +39,7 @@ export function EnvironmentLab({
     backdrop.setEnabled(enabled);
   };
   const active = queue.items.find((item) => item.id === queue.activeItemId) ?? queue.items[0];
-  const canArrange = backdrop.canShare && canArrangeQueue(role, queue.policy);
+  const canArrange = backdrop.canShare;
   const usePreset = (source: YouTubeSource) => {
     addSource(source, canArrange);
     setDeckStatus(canArrange
@@ -61,21 +57,22 @@ export function EnvironmentLab({
 
   return (
     <div className="environment-lab">
-      <div className="surface-section-heading"><strong>On this device</strong><small>These controls never change another person’s setup.</small></div>
-      <div className="inline-controls">
-        <button aria-pressed={backdrop.enabled && !backdrop.reducedSensory} onClick={() => setWindowOpen(!(backdrop.enabled && !backdrop.reducedSensory))}>{backdrop.enabled && !backdrop.reducedSensory ? <Eye size={14} /> : <EyeOff size={14} />}{backdrop.enabled && !backdrop.reducedSensory ? 'View open' : 'View closed'}</button>
-        <button aria-pressed={!backdrop.muted} onClick={() => backdrop.setMuted(!backdrop.muted)}>{backdrop.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}{backdrop.muted ? 'Background audio muted' : 'Background audio on'}</button>
-        <button className={backdrop.reducedSensory ? 'selected' : ''} onClick={quietEverything}>Quiet everything</button>
+      <div className="surface-section-heading"><strong>Your background</strong><small>The room picks the source. You pick how it lives on this screen.</small></div>
+      <div className="background-modes" role="group" aria-label="Background mode">
+        <button aria-pressed={backdrop.enabled && !backdrop.reducedSensory} onClick={() => setWindowOpen(true)}><Eye size={14} />Live</button>
+        <button aria-pressed={!backdrop.enabled && !backdrop.reducedSensory} onClick={() => { backdrop.setEnabled(false); backdrop.setReducedSensory(false); }}><Radio size={14} />Magma</button>
+        <button aria-pressed={backdrop.reducedSensory} onClick={quietEverything}><EyeOff size={14} />Quiet</button>
       </div>
+      <div className="inline-controls"><button aria-pressed={!backdrop.muted} onClick={() => backdrop.setMuted(!backdrop.muted)}>{backdrop.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}{backdrop.muted ? 'Audio off' : 'Audio on'}</button></div>
 
       <section className="listening-deck" aria-labelledby="listening-deck-title">
-        <div className="surface-section-heading"><strong id="listening-deck-title">Background queue</strong><small>{queue.policy === 'open' ? 'Everyone can add and reorder.' : 'Everyone can add; stewards reorder.'}</small></div>
+        <div className="surface-section-heading"><strong id="listening-deck-title">Background queue</strong><small>Everyone can add, choose, and reorder.</small></div>
         {active && <article className="deck-now" aria-label="Now in the room"><span><Radio size={12} /> NOW IN THE ROOM</span><strong>{active.source.label}</strong><small>added by {active.addedByEmoji} {active.addedByName}</small></article>}
         {queue.stagedItemId && <p className="deck-staged">Saved for the break · {queue.items.find((item) => item.id === queue.stagedItemId)?.source.label}</p>}
         <ol className="deck-list" aria-label="Background queue order">
           {queue.items.filter((item) => item.id !== queue.activeItemId).map((item) => {
             const index = queue.items.findIndex((candidate) => candidate.id === item.id);
-            const removable = backdrop.canShare && canRemoveQueueItem(role, queue.policy, memberId, item);
+            const removable = backdrop.canShare && item.origin !== 'migration';
             return <li key={item.id} className={item.id === queue.stagedItemId ? 'staged' : ''}>
               <div><strong>{item.source.label}</strong><small>{item.addedByEmoji} {item.addedByName}{item.id === queue.stagedItemId ? ' · saved for break' : ''}</small></div>
               {canArrange && <div className="deck-actions">
@@ -92,8 +89,7 @@ export function EnvironmentLab({
             {SCENE_PRESETS.map((scene) => <button className={backdrop.source.id === scene.id ? 'scene-option selected' : 'scene-option'} key={scene.id} onClick={() => usePreset(scene)}><span><Radio size={12} /> {canArrange ? floor ? 'SAVE FOR BREAK' : 'USE NOW' : 'ADD'}</span><strong>{scene.label.replace(' · live', '')}</strong><small>{scene.description}</small></button>)}
           </div>
           <div className="custom-scene"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && apply()} placeholder="YouTube video or playlist URL" aria-label="YouTube video or playlist URL" /><button onClick={apply}>Add to queue</button></div>
-        </details> : <p className="surface-note">{role === 'guest' ? 'Guests can listen without changing the queue.' : 'Reconnect to change the queue.'}</p>}
-        {role === 'owner' && <label className="deck-policy">Who can reorder<select value={queue.policy} onChange={(event) => setPolicy(event.target.value as DeckPolicy)}><option value="open">Everyone</option><option value="stewarded">Stewards only</option></select></label>}
+        </details> : <p className="surface-note">Reconnect to change the queue.</p>}
         <div className="cue-status" aria-live="polite">{deckStatus}</div>
       </section>
 
@@ -104,9 +100,7 @@ export function EnvironmentLab({
         <label>Noise <input type="range" min="0" max="100" value={Math.round(audio.volume * 100)} onChange={(event) => audio.setVolume(Number(event.target.value) / 100)} aria-label="Warm noise volume" /></label>
       </div>
 
-      <div className="surface-section-heading"><strong>Sensory boundary</strong><small>Quiet is a complete setup.</small></div>
-      <div className="inline-controls">{backdrop.reducedSensory && <button onClick={() => backdrop.setReducedSensory(false)}>Restore visual field</button>}</div>
-      <p className="surface-note">The selected view and its transport belong to the room. Visibility, mute, sound, and sensory choices stay on this device.</p>
+      <p className="surface-note">The live source and playback are shared. Live, Magma, Quiet, and audio are yours.</p>
     </div>
   );
 }

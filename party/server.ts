@@ -290,7 +290,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       return;
     }
     if (workspaceMessage) {
-      if (!connection.state || connection.state.role === 'guest') return;
+      if (!connection.state) return;
       const changes = decodeWorkspaceChanges(message);
       if (!changes) return;
       const operation = this.workspaceQueue.then(() => this.mergeWorkspaceChanges(changes, connection));
@@ -465,10 +465,6 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     if (parsed.type === 'media.command') {
       await this.enqueueRoomMutation(async () => {
         await this.settleTimer('server');
-        if (participant.role === 'guest') {
-          connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'Guests can listen without steering room playback.'}));
-          return;
-        }
         if (parsed.command.type === 'source') {
           connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'Add sources through the Listening Deck.'}));
           connection.send(JSON.stringify(this.snapshot()));
@@ -589,7 +585,6 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     }
 
     if (parsed.type === 'timer.settings') {
-      if (!this.isHost(connection)) return;
       const durations = validDurations(parsed.durations);
       if (!durations) return;
       await this.enqueueRoomMutation(async () => {
@@ -630,14 +625,8 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
           connection.send(JSON.stringify(this.snapshot()));
           return;
         }
-        if (this.isHost(connection)) await this.applyCommand(parsed.command, participant.memberId);
-        else {
-          this.proposal = {
-            id: crypto.randomUUID(), fromId: participant.memberId, fromName: participant.name,
-            command: parsed.command, createdAt: Date.now(), baseRevision: this.timer.revision, baseSessionId: this.timer.sessionId,
-          };
-          this.broadcastSnapshot();
-        }
+        this.proposal = null;
+        await this.applyCommand(parsed.command, participant.memberId);
       });
     }
   }
@@ -1105,7 +1094,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
 
   private validWorkspace(workspace: MergeableStore) {
     if (workspace.getValueIds().length > 0) return false;
-    const allowedTables = new Set(['tasks', 'sparks']);
+    const allowedTables = ALLOWED_TABLES;
     if (workspace.getTableIds().some((tableId) => !allowedTables.has(tableId))) return false;
     for (const tableId of workspace.getTableIds()) {
       const rowIds = workspace.getRowIds(tableId);
@@ -1194,6 +1183,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       candidate.setCell('sparks', rowId, 'emoji', original.emoji);
       candidate.setCell('sparks', rowId, 'createdAt', original.createdAt);
     }
+
   }
 
   private async mergeWorkspaceChanges(changes: MergeableChanges, connection: Connection) {

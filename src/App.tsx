@@ -1,42 +1,22 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
-import {
-  Bell, BellOff, Check, Circle, Copy, Crown, Flame, ListTodo, Maximize2, Minimize2, Pause, Pin, Play, Plus,
-  RotateCcw, Settings, SlidersHorizontal, Sparkles, StickyNote, Timer, Trash2, Users, Volume2, VolumeX, X,
-} from 'lucide-react';
-import {useTable} from 'tinybase/ui-react';
+import {lazy, Suspense, useEffect, useRef, useState} from 'react';
+import {Check, Copy, Eye, EyeOff, Hand, Map, MessageCircle, Pause, PenLine, Play, Plus, Radio, RotateCcw, StickyNote, Users, Volume2, VolumeX, X} from 'lucide-react';
 import {LavaShader} from './LavaShader';
-import {formatRemaining, type TimerMode, type TimerState} from './domain/timer';
-import type {Participant, Profile, SessionArtifact} from './domain/protocol';
-import {deriveParticipantPosture, isFloor, type PorchMessage, type RoomCueId} from './domain/porch';
-import {deriveSalonPhase} from './domain/salonPhase';
-import {store} from './store';
-import {useAmbientAudio} from './useAmbientAudio';
-import {useFocusAssist} from './useFocusAssist';
-import {useRoom} from './useRoom';
-import {useYouTubeBackdrop} from './useYouTubeBackdrop';
 import {YouTubeBackdrop} from './YouTubeBackdrop';
-import {EnvironmentLab} from './EnvironmentLab';
-import {BlockAim} from './BlockAim';
-import {useBlockRitual} from './useBlockRitual';
+import {ArrivalVeil, type ArrivalState} from './ArrivalVeil';
 import {Porch} from './Porch';
-import {ArrivalVeil, RoomAccess, type ArrivalState} from './ArrivalVeil';
+import type {PorchTool} from './PorchCanvas';
+import {parseYouTubeSource, SCENE_PRESETS} from './domain/youtube';
+import {formatRemaining} from './domain/timer';
+import {useAmbientAudio} from './useAmbientAudio';
+import {useRoom} from './useRoom';
 import {useRoomAccess} from './useRoomAccess';
+import {useYouTubeBackdrop} from './useYouTubeBackdrop';
 
-const MODES: {id: TimerMode; label: string}[] = [
-  {id: 'focus', label: 'Focus'},
-  {id: 'shortBreak', label: 'Short break'},
-  {id: 'longBreak', label: 'Long break'},
-];
-const PROFILE_EMOJIS = ['🫧', '🪩', '🧃', '🌋', '🪼', '🌙'];
-const PROFILE_COLORS = ['#ff7a90', '#9d8cff', '#65d9c4', '#ffd071', '#7ab8ff', '#ef91ff'];
-const SOCIAL_SIGNALS: Array<{id: RoomCueId; label: string; symbol: string; meaning: string}> = [
-  {id: 'smallWin', label: 'Nice', symbol: '✦', meaning: 'Acknowledge movement'},
-  {id: 'breathe', label: 'With you', symbol: '〰', meaning: 'Offer quiet support'},
-];
+const PorchCanvas = lazy(() => import('./PorchCanvas').then((module) => ({default: module.PorchCanvas})));
 
 const roomFromUrl = () => {
   const room = new URLSearchParams(window.location.search).get('room');
-  if (room) return room.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64) || 'molten-lobby';
+  if (room) return room.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64) || 'front-porch';
   const generated = crypto.randomUUID();
   const url = new URL(window.location.href);
   url.searchParams.set('room', generated);
@@ -54,454 +34,126 @@ const useClock = (remaining: () => number) => {
   return milliseconds;
 };
 
-function ProfileEditor({profile, onChange, onClose}: {profile: Profile; onChange: (patch: Partial<Profile>) => void; onClose: () => void}) {
-  return (
-    <div className="profile-editor">
-      <div className="editor-heading"><strong>Enter as yourself</strong><button className="icon-button" onClick={onClose} aria-label="Close profile editor"><X size={15} /></button></div>
-      <label>Name<input maxLength={32} value={profile.name} onChange={(event) => onChange({name: event.target.value})} /></label>
-      <label>Today’s intention<input maxLength={120} value={profile.intention} placeholder="What are you holding?" onChange={(event) => onChange({intention: event.target.value})} /></label>
-      <div className="profile-options" aria-label="Choose your room symbol">
-        {PROFILE_EMOJIS.map((emoji) => <button className={profile.emoji === emoji ? 'selected' : ''} key={emoji} onClick={() => onChange({emoji})}>{emoji}</button>)}
-      </div>
-      <div className="color-options" aria-label="Choose your color">
-        {PROFILE_COLORS.map((color) => <button aria-label={`Use ${color}`} className={profile.color === color ? 'selected' : ''} key={color} style={{background: color}} onClick={() => onChange({color})} />)}
-      </div>
-    </div>
-  );
-}
-
-function People({participants, profile, timer, hostId, isHost, editProfile, transferHost, setPresence, viewerRole, revokeMember}: {
-  participants: Participant[]; profile: Profile; hostId: string | null; isHost: boolean;
-  timer: TimerState; editProfile: () => void; transferHost: (memberId: string) => void;
-  setPresence: (choice: Participant['presence']) => void;
-  viewerRole?: Participant['role']; revokeMember?: (memberId: string) => void;
-}) {
-  const self = participants.find((person) => person.memberId === profile.memberId);
-  const ready = participants.filter((person) => deriveParticipantPosture(person.presence, timer) === 'ready').length;
-  return (
-    <section className="people-card">
-      <div className="card-title"><span><Users size={17} /> People</span><small>{ready ? `${ready} ready · ` : ''}{participants.length} {participants.length === 1 ? 'person' : 'people'}</small></div>
-      <div className="people">
-        {participants.map((person) => {
-          const posture = deriveParticipantPosture(person.presence, timer);
-          return <div className="person" data-posture={posture} key={person.memberId}>
-            <button className="avatar" style={{'--person-color': person.color} as React.CSSProperties} onClick={person.memberId === profile.memberId ? editProfile : undefined} aria-label={person.memberId === profile.memberId ? 'Edit your profile' : `${person.name} profile`}>{person.emoji}</button>
-            <div><strong>{person.name}{person.memberId === profile.memberId ? ' · you' : ''}</strong><small><span className="posture">{posture}</span>{person.role !== 'member' ? ` · ${person.role}` : ''}{person.intention ? ` · ${person.intention}` : ''}{person.connections > 1 ? ` · ${person.connections} tabs` : ''}</small></div>
-            {person.memberId === hostId ? <Crown className="host-crown" size={13} aria-label="Room host" /> : isHost ? <button className="host-transfer" onClick={() => transferHost(person.memberId)} aria-label={`Make ${person.name} host`}><Crown size={12} /></button> : <span className="pulse" />}
-            {person.memberId !== profile.memberId && revokeMember && ((viewerRole === 'owner' && person.role !== 'owner') || (viewerRole === 'steward' && ['member', 'guest'].includes(person.role))) && <button className="icon-button danger" onClick={() => revokeMember(person.memberId)} aria-label={`Remove ${person.name} from room`}><Trash2 size={13} /></button>}
-          </div>;
-        })}
-      </div>
-      {self && <div className="presence-choices" aria-label="Your presence"><button aria-pressed={self.presence === 'here'} onClick={() => setPresence('here')}>Here</button><button aria-pressed={self.presence === 'ready'} disabled={isFloor(timer)} onClick={() => setPresence('ready')}>Ready</button><button aria-pressed={self.presence === 'away'} onClick={() => setPresence('away')}>Away</button></div>}
-    </section>
-  );
-}
-
-function Tasks({profile, participants, writable, onFocusNext}: {profile: Profile; participants: Participant[]; writable: boolean; onFocusNext: (outcome: string) => void}) {
-  const tasks = useTable('tasks', store);
-  const [draft, setDraft] = useState('');
-  const ordered = useMemo(() => Object.entries(tasks).sort(([, a], [, b]) => Number(a.createdAt) - Number(b.createdAt)), [tasks]);
-  const people = new Map(participants.map((person) => [person.memberId, person]));
-
-  const add = () => {
-    const value = draft.trim();
-    if (!value) return;
-    store.setRow('tasks', crypto.randomUUID(), {text: value, done: false, createdAt: Date.now(), createdBy: profile.name, ownerId: profile.memberId, ownerName: profile.name, completedAt: 0});
-    setDraft('');
-  };
-
-  return (
-    <div className="workspace-content">
-      <div className="task-list">
-        {ordered.length === 0 && <p className="empty">Keep future work here. Your current outcome stays on Focus.</p>}
-        {ordered.map(([id, task]) => {
-          const owner = people.get(String(task.ownerId));
-          return (
-            <div className={`task ${task.done ? 'done' : ''}`} key={id}>
-              <button className="task-check" disabled={!writable} onClick={() => store.setRow('tasks', id, {...task, done: !task.done, completedAt: task.done ? 0 : Date.now()})} aria-label={`Mark ${task.text} ${task.done ? 'unfinished' : 'done'}`}>{task.done ? <Check size={14} /> : <Circle size={14} />}</button>
-              <div><span>{String(task.text)}</span><small>{owner ? `${owner.emoji} ${owner.name}` : task.ownerName ? String(task.ownerName) : 'unclaimed'}</small></div>
-              <button className="claim-button" disabled={!writable} onClick={() => store.setRow('tasks', id, {...task, ownerId: task.ownerId === profile.memberId ? '' : profile.memberId, ownerName: task.ownerId === profile.memberId ? '' : profile.name})}>{task.ownerId === profile.memberId ? 'Unassign' : 'Claim'}</button>
-              {!task.done && <button className="claim-button" disabled={!writable} onClick={() => onFocusNext(String(task.text))}>Focus next</button>}
-              <button className="icon-button danger" disabled={!writable} onClick={() => store.delRow('tasks', id)} aria-label={`Delete ${task.text}`}><Trash2 size={14} /></button>
-            </div>
-          );
-        })}
-      </div>
-      {writable ? <div className="add-task"><input value={draft} maxLength={160} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="Add something for later…" /><button onClick={add} aria-label="Add to shared list"><Plus size={17} /></button></div> : <p className="surface-note">Guests can read the board. A steward can invite you as a member to edit it.</p>}
-    </div>
-  );
-}
-
-function Sparks({profile, writable}: {profile: Profile; writable: boolean}) {
-  const sparks = useTable('sparks', store);
-  const [draft, setDraft] = useState('');
-  const ordered = useMemo(() => Object.entries(sparks).sort(([, a], [, b]) => Number(b.createdAt) - Number(a.createdAt)), [sparks]);
-  const add = () => {
-    const value = draft.trim();
-    if (!value) return;
-    store.setRow('sparks', crypto.randomUUID(), {text: value, authorId: profile.memberId, authorName: profile.name, emoji: profile.emoji, createdAt: Date.now(), pinned: false});
-    setDraft('');
-  };
-  return (
-    <div className="workspace-content">
-      <div className="spark-list">
-        {ordered.length === 0 && <p className="empty">Save a note the room can return to later.</p>}
-        {ordered.map(([id, spark]) => <div className="spark" key={id}><span>{String(spark.emoji)}</span><div><p>{String(spark.text)}</p><small>{String(spark.authorName)}</small></div><button className="icon-button" disabled={!writable} onClick={() => store.setCell('sparks', id, 'pinned', !spark.pinned)} aria-label={`${spark.pinned ? 'Unpin' : 'Pin'} note`}><Pin size={13} fill={spark.pinned ? 'currentColor' : 'none'} /></button>{writable && spark.authorId === profile.memberId && <button className="icon-button" onClick={() => store.delRow('sparks', id)} aria-label="Delete your note"><Trash2 size={13} /></button>}</div>)}
-      </div>
-      {writable ? <div className="add-task"><input value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="Leave a note for later…" /><button onClick={add} aria-label="Add room note"><Plus size={17} /></button></div> : <p className="surface-note">Guests can read notes without changing them.</p>}
-    </div>
-  );
-}
-
-function Workspace({profile, participants, writable, onFocusNext}: {profile: Profile; participants: Participant[]; writable: boolean; onFocusNext: (outcome: string) => void}) {
-  const [tab, setTab] = useState<'tasks' | 'sparks'>('tasks');
-  const tasks = useTable('tasks', store);
-  const sparks = useTable('sparks', store);
-  return (
-    <section className="tasks-card">
-      <div className="workspace-tabs" role="tablist" aria-label="Room board">
-        <button role="tab" aria-selected={tab === 'tasks'} className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}><Check size={15} /> Next <small>{Object.keys(tasks).length}</small></button>
-        <button role="tab" aria-selected={tab === 'sparks'} className={tab === 'sparks' ? 'active' : ''} onClick={() => setTab('sparks')}><StickyNote size={15} /> Notes <small>{Object.keys(sparks).length}</small></button>
-      </div>
-      {tab === 'tasks' ? <Tasks profile={profile} participants={participants} writable={writable} onFocusNext={onFocusNext} /> : <Sparks profile={profile} writable={writable} />}
-    </section>
-  );
-}
-
-function CompletionRitual({artifact, outcome, onClose, onCarryForward}: {artifact: SessionArtifact; outcome?: string; onClose: () => void; onCarryForward?: () => void}) {
-  const minutes = Math.round(artifact.durationMs / 60_000);
-  return (
-    <section className="completion-ritual" aria-live="polite">
-      <button className="icon-button completion-close" onClick={onClose} aria-label="Close focus summary"><X size={16} /></button>
-      <div className="ember-mark"><Flame size={28} fill="currentColor" /></div>
-      <p className="eyebrow">{artifact.mode === 'focus' ? 'focus complete' : 'break complete'}</p>
-      <h2>{minutes} {minutes === 1 ? 'minute' : 'minutes'} together.</h2>
-      <p>{artifact.participants.length ? artifact.participants.map((person) => `${person.emoji} ${person.name}`).join(' · ') : 'The room stayed with you.'}</p>
-      {artifact.reactionCount > 0 && <small>{artifact.reactionCount} {artifact.reactionCount === 1 ? 'reaction' : 'reactions'} waited for the break</small>}
-      {outcome && <div className="block-verdict"><strong>{outcome}</strong><div><button onClick={onClose}>Finished</button>{onCarryForward && <button onClick={onCarryForward}>Keep on Board</button>}</div></div>}
-    </section>
-  );
-}
-
-type Surface = 'workspace' | 'environment' | 'tempo' | 'room';
-
-function App() {
+export default function App() {
   const [room] = useState(roomFromUrl);
   const access = useRoomAccess(room);
   const protectedAccess = access.session.kind === 'admitted' ? access.session : null;
   const legacyAccess = access.session.kind === 'legacy';
   const session = useRoom(room, legacyAccess ? undefined : protectedAccess?.admission ?? null, protectedAccess?.refreshAdmission);
-  const milliseconds = useClock(session.remaining);
+  const remaining = useClock(session.remaining);
+  const backdrop = useYouTubeBackdrop(session.media.source, session.connected);
   const audio = useAmbientAudio();
-  const canSteerMedia = session.connected && session.role !== 'guest';
-  const backdrop = useYouTubeBackdrop(session.media.source, canSteerMedia);
-  const ritual = useBlockRitual();
-  const assist = useFocusAssist(session.timer.status === 'running', session.completion, audio.playChime);
-  const [copied, setCopied] = useState(false);
+  const backgroundRef = useRef<HTMLElement | null>(null);
+  const [tool, setTool] = useState<PorchTool>('select');
+  const [glassVisible, setGlassVisible] = useState(true);
+  const [tunerOpen, setTunerOpen] = useState(false);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [draftSource, setDraftSource] = useState('');
+  const [sourceStatus, setSourceStatus] = useState('');
   const [justCreated, setJustCreated] = useState(false);
   const [invitationPayload, setInvitationPayload] = useState('');
-  const [invitationBusy, setInvitationBusy] = useState<'copying' | 'rotating' | null>(null);
-  const [editingProfile, setEditingProfile] = useState(false);
-  const [activeSurface, setActiveSurface] = useState<Surface | null>(null);
-  const [playerMode, setPlayerMode] = useState(false);
-  const [pulse, setPulse] = useState(0);
-  const [reviewArtifact, setReviewArtifact] = useState<SessionArtifact | null>(null);
-  const [signalConfirmation, setSignalConfirmation] = useState('');
-  const [socialTreatment, setSocialTreatment] = useState<{id: number; text: string; glyph: string} | null>(null);
-  const seenReactions = useRef(new Set<string>());
-  const seenSignals = useRef(new Set<string>());
-  const seenSocialBloom = useRef(new Set<string>());
-  const queuedSocial = useRef({reactions: 0, signals: 0, names: new Set<string>()});
-  const socialFlush = useRef<number | null>(null);
-  const socialClear = useRef<number | null>(null);
-  const surfaceTrigger = useRef<HTMLButtonElement | null>(null);
-  const instrumentRef = useRef<HTMLElement | null>(null);
-  const progress = 1 - milliseconds / session.timer.durationMs;
-  const salonPhase = deriveSalonPhase(session.timer, session.roomNow());
-  const selfPresence = session.participants.find((person) => person.memberId === session.profile.memberId)?.presence ?? 'here';
-  const readyCount = session.participants.filter((person) => person.presence === 'ready').length;
-  const peopleInRoom = session.participants.length;
-  const presenceSymbols = session.participants.slice(0, 3).map((person) => person.emoji).join(' ');
+  const [copied, setCopied] = useState(false);
 
-  const applyQuietBoundary = () => {
-    backdrop.setMuted(true);
-    audio.silence();
-    assist.disableNotifications();
+  const share = async () => {
+    const url = new URL(window.location.href);
+    url.hash = '';
+    const capability = legacyAccess ? null : await session.createInvitation('member', false);
+    const payload = capability ? `Come sit on the Porch:\n${url.toString()}\n\nCode:\n${capability}` : url.toString();
+    setInvitationPayload(payload);
+    try { await navigator.clipboard.writeText(payload); setCopied(true); window.setTimeout(() => setCopied(false), 1400); } catch { setCopied(false); }
   };
-
-  useEffect(() => {
-    if (access.session.kind !== 'revoked') return;
-    applyQuietBoundary();
+  const useSource = (source: (typeof SCENE_PRESETS)[number]) => {
+    session.enqueueMedia(source, true);
+    backdrop.setEnabled(true);
+    backdrop.setReducedSensory(false);
+    setSourceStatus(`${source.label.replace(' · live', '')} is now in the window.`);
+  };
+  const addSource = () => {
+    const source = parseYouTubeSource(draftSource);
+    if (!source) { setSourceStatus('Paste a YouTube video or playlist link.'); return; }
+    session.enqueueMedia(source, true);
+    backdrop.setEnabled(true);
+    backdrop.setReducedSensory(false);
+    setDraftSource('');
+    setSourceStatus('The window changed for everyone.');
+  };
+  const quiet = () => {
     backdrop.setEnabled(false);
     backdrop.setReducedSensory(true);
-    setPlayerMode(false);
-    setActiveSurface(null);
-  }, [access.session.kind]);
-
-  useEffect(() => {
-    if (!session.completion) return;
-    setActiveSurface(null);
-    setPulse(1);
-    const timeout = window.setTimeout(() => setPulse(0), 2800);
-    return () => window.clearTimeout(timeout);
-  }, [session.completion]);
-
-  useEffect(() => {
-    const trimSeen = (seen: Set<string>) => {
-      while (seen.size > 128) seen.delete(seen.values().next().value!);
-    };
-    for (const reaction of session.reactions) {
-      if (seenReactions.current.has(reaction.id)) continue;
-      seenReactions.current.add(reaction.id);
-      queuedSocial.current.reactions += 1;
-      queuedSocial.current.names.add(reaction.from);
-    }
-    for (const signal of session.signals) {
-      if (seenSignals.current.has(signal.id)) continue;
-      seenSignals.current.add(signal.id);
-      queuedSocial.current.signals += 1;
-      queuedSocial.current.names.add(signal.authorName);
-    }
-    trimSeen(seenReactions.current);
-    trimSeen(seenSignals.current);
-    if ((!queuedSocial.current.reactions && !queuedSocial.current.signals) || socialFlush.current !== null) return;
-    socialFlush.current = window.setTimeout(() => {
-      socialFlush.current = null;
-      const queued = queuedSocial.current;
-      queuedSocial.current = {reactions: 0, signals: 0, names: new Set<string>()};
-      const count = queued.reactions + queued.signals;
-      const names = [...queued.names];
-      const people = names.length === 0 ? 'The room' : names.length === 1 ? names[0] : `${names.slice(0, 2).join(' and ')}${names.length > 2 ? ` and ${names.length - 2} more` : ''}`;
-      const kind = queued.reactions && queued.signals ? 'reactions and signals' : queued.signals ? (count === 1 ? 'a signal' : 'signals') : (count === 1 ? 'a reaction' : 'reactions');
-      setSocialTreatment({id: Date.now(), text: `${people} shared ${count === 1 ? '' : `${count} `}${kind}.`, glyph: queued.signals ? '✦' : '◇'});
-      void audio.playSocialCue();
-      if (socialClear.current !== null) window.clearTimeout(socialClear.current);
-      socialClear.current = window.setTimeout(() => setSocialTreatment(null), 4200);
-    }, 120);
-  }, [audio.playSocialCue, session.reactions, session.signals]);
-
-  useEffect(() => {
-    const bloom = session.socialBloom;
-    if (!bloom || seenSocialBloom.current.has(bloom.releaseId)) return;
-    seenSocialBloom.current.add(bloom.releaseId);
-    while (seenSocialBloom.current.size > 32) seenSocialBloom.current.delete(seenSocialBloom.current.values().next().value!);
-    if (socialFlush.current !== null) window.clearTimeout(socialFlush.current);
-    socialFlush.current = null;
-    queuedSocial.current = {reactions: 0, signals: 0, names: new Set<string>()};
-    const parts = [
-      bloom.totalReactions ? `${bloom.totalReactions} ${bloom.totalReactions === 1 ? 'reaction' : 'reactions'}` : '',
-      bloom.totalSignals ? `${bloom.totalSignals} ${bloom.totalSignals === 1 ? 'signal' : 'signals'}` : '',
-    ].filter(Boolean).join(' and ');
-    setSocialTreatment({id: Date.now(), text: `The room released ${parts} for the break.`, glyph: '✦'});
-    void audio.playSocialCue();
-    if (socialClear.current !== null) window.clearTimeout(socialClear.current);
-    socialClear.current = window.setTimeout(() => setSocialTreatment(null), 4200);
-  }, [audio.playSocialCue, session.socialBloom]);
-
-  useEffect(() => () => {
-    if (socialFlush.current !== null) window.clearTimeout(socialFlush.current);
-    if (socialClear.current !== null) window.clearTimeout(socialClear.current);
-  }, []);
-
-  useEffect(() => {
-    if (!activeSurface) return;
-    window.requestAnimationFrame(() => document.getElementById(`surface-${activeSurface}`)?.focus());
-  }, [activeSurface]);
-
-  const openSurface = (surface: Surface, trigger: HTMLButtonElement) => {
-    surfaceTrigger.current = trigger;
-    setActiveSurface(surface);
+    audio.silence();
   };
-  const closeSurface = () => {
-    setActiveSurface(null);
-    window.requestAnimationFrame(() => surfaceTrigger.current?.focus());
-  };
-
-  const copyInvite = async (rotate = false, role: 'steward' | 'member' | 'guest' = 'member') => {
-    setInvitationBusy(rotate ? 'rotating' : 'copying');
-    try {
-      const url = new URL(window.location.href);
-      url.hash = '';
-      if (legacyAccess) {
-        const payload = url.toString();
-        setInvitationPayload(payload);
-        try {
-          await navigator.clipboard.writeText(payload);
-          setCopied(true);
-        } catch {
-          setCopied(false);
-        }
-      } else {
-        const capability = await session.createInvitation(role, rotate);
-        if (!capability) return false;
-        const payload = `Join my Magma room as ${role}:\n${url.toString()}\n\nInvitation code:\n${capability}`;
-        setInvitationPayload(payload);
-        try {
-          await navigator.clipboard.writeText(payload);
-          setCopied(true);
-        } catch {
-          setCopied(false);
-        }
-      }
-      window.setTimeout(() => setCopied(false), 1400);
-      return true;
-    } finally {
-      setInvitationBusy(null);
-    }
-  };
-  const copyPreparedInvitation = async () => {
-    if (!invitationPayload) return;
-    try {
-      await navigator.clipboard.writeText(invitationPayload);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      // The selectable text remains available when clipboard policy denies the write.
-    }
-  };
-  const promotePorchMessage = (message: PorchMessage) => {
-    store.setRow('sparks', `porch-${message.id}`, {
-      text: message.text,
-      authorId: message.authorId,
-      authorName: message.authorName,
-      emoji: message.authorEmoji,
-      createdAt: message.createdAt,
-      pinned: false,
-    });
-  };
-  const actionLabel = session.timer.status === 'running' ? 'Pause' : session.timer.status === 'paused' ? 'Resume' : 'Start';
-  const timerIsFocus = session.timer.mode === 'focus';
-  const modeActionLabel = timerIsFocus && peopleInRoom > 1 ? `${actionLabel} together` : `${actionLabel} ${timerIsFocus ? 'focus' : 'break'}`;
-  const stateCopy = timerIsFocus
-    ? session.timer.status === 'running'
-      ? peopleInRoom > 1 ? 'focusing together' : 'focus in progress'
-      : session.timer.status === 'paused'
-        ? 'focus paused · the room stays quiet'
-        : peopleInRoom > 1 ? `${peopleInRoom} people in the room` : 'ready when you are'
-    : session.timer.status === 'running'
-      ? 'break in progress'
-      : session.timer.status === 'paused'
-        ? 'break paused'
-        : 'break ready';
-  const surfaceLabel: Record<Surface, string> = {workspace: 'Board', environment: 'Scene', tempo: 'Timing', room: 'Room'};
-  const surfaceButtons: Array<{id: Surface | null; label: string; icon: React.ReactNode}> = [
-    {id: null, label: 'Focus', icon: <Timer size={18} />},
-    {id: 'workspace', label: 'Board', icon: <ListTodo size={18} />},
-    {id: 'environment', label: 'Scene', icon: <SlidersHorizontal size={18} />},
-    {id: 'room', label: 'Room', icon: <Users size={18} />},
-  ];
   const arrivalState: ArrivalState = access.session.kind === 'checking'
     ? {kind: 'proving', roomName: room}
     : access.session.kind === 'create'
       ? {kind: 'creating', step: 'form', submitting: access.session.busy, initialDisplayName: session.profile.name, initialEmoji: session.profile.emoji, error: access.session.error}
       : access.session.kind === 'invitation'
-        ? {kind: 'invited', roomName: 'this Magma room', role: 'member', phase: 'unknown', invitationRequired: true, displayName: session.profile.name, emoji: session.profile.emoji, entering: access.session.busy, error: access.session.error}
+        ? {kind: 'invited', roomName: 'this Porch', role: 'member', phase: 'unknown', invitationRequired: true, displayName: session.profile.name, emoji: session.profile.emoji, entering: access.session.busy, error: access.session.error}
         : access.session.kind === 'revoked'
-          ? {kind: 'revoked', roomName: 'this Magma room'}
+          ? {kind: 'revoked', roomName: 'this Porch'}
           : access.session.kind === 'denied'
             ? {kind: 'denied', reason: 'unknown', retryable: access.session.retryable}
             : access.session.kind === 'admitted' && !session.connected
-              ? {kind: 'reconnecting', roomName: 'this Magma room'}
+              ? {kind: 'reconnecting', roomName: 'this Porch'}
               : access.session.kind === 'admitted' && justCreated
-                ? {kind: 'creating', step: 'ready', roomName: 'Private focus room', copying: invitationBusy === 'copying', copied, invitationPayload}
-              : {kind: 'admitted', roomName: room, role: access.session.kind === 'admitted' ? access.session.admission.role : 'member'};
+                ? {kind: 'creating', step: 'ready', roomName: 'Your porch', copying: false, copied, invitationPayload}
+                : {kind: 'admitted', roomName: room, role: 'member'};
+  const porchAdmitted = legacyAccess || access.session.kind === 'admitted';
 
-  return (
-    <>
-    <main ref={instrumentRef} data-arrival-background className={`instrument-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''} ${playerMode ? 'player-mode' : ''}`}>
-      <section className={`media-stage ${isFloor(session.timer) ? 'focus-active' : ''}`} aria-label="Living view">
-        <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canShare={canSteerMedia} muted={backdrop.muted} />
-        {(!backdrop.enabled || backdrop.reducedSensory) && <div className="quiet-field">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />}<span>{backdrop.reducedSensory ? 'Quiet field' : 'Lava field'}</span></div>}
+  return <>
+    <main className={`porch-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''}`} ref={backgroundRef} data-arrival-background>
+      <section className="porch-world" aria-label="The shared window">
+        <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canShare={session.connected} muted={backdrop.muted} />
+        {(!backdrop.enabled || backdrop.reducedSensory) && <div className="porch-glow">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 0.8 : 0.25} presence={session.participants.length} pulse={0} phase={0} />}<span>{backdrop.reducedSensory ? 'Quiet' : 'Glow'}</span></div>}
       </section>
 
-      {playerMode && <button className="player-mode-exit" onClick={() => setPlayerMode(false)}><Minimize2 size={15} /> Return to instrument</button>}
+      {porchAdmitted && <Suspense fallback={<div className="porch-canvas-status">Opening the glass…</div>}>
+        <PorchCanvas room={room} profile={session.profile} refreshAdmission={protectedAccess?.refreshAdmission} glassVisible={glassVisible} tool={tool} />
+      </Suspense>}
+      <section className="porch-fixed-clock" aria-label="Shared clock">
+        <small>shared clock</small><strong>{formatRemaining(remaining)}</strong>
+        <div><button onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})}>{session.timer.status === 'running' ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}{session.timer.status === 'running' ? 'Pause' : 'Start'}</button><button onClick={() => session.command({type: 'reset'})} aria-label="Reset shared clock"><RotateCcw size={14} /></button></div>
+      </section>
 
-      <aside className="instrument-rail" aria-label="Magma focus instrument">
-        <header className="instrument-header">
-          <a className="brand" href="/" aria-label="Magma home"><Flame size={17} fill="currentColor" /><h1>magma</h1></a>
-          <div className="header-actions"><button className="camera-control" onClick={() => setPlayerMode(true)}><Maximize2 size={13} /> View only</button><button className="room-locus" aria-label={session.connected ? `Open Room, ${peopleInRoom} ${peopleInRoom === 1 ? 'person' : 'people'} in room` : 'Open Room, reconnecting'} onClick={(event) => openSurface('room', event.currentTarget)}><span className={`status-dot ${session.connected ? 'online' : ''}`} aria-hidden="true" /><span className="room-presence-symbols" aria-hidden="true">{presenceSymbols || 'Room'}</span><small>{peopleInRoom} in room</small></button></div>
-        </header>
-
-        {(activeSurface !== null || session.completion || reviewArtifact) && <div className="clock-strip" aria-label="Shared clock summary">
-          <button className="clock-summary" onClick={() => setActiveSurface(null)}><span>{MODES.find((mode) => mode.id === session.timer.mode)?.label}</span><strong>{formatRemaining(milliseconds)}</strong></button>
-          <button className="clock-transport" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})} aria-label={session.timer.status === 'running' ? 'Pause clock' : 'Start clock'}>{session.timer.status === 'running' ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}</button>
-        </div>}
-
-        {session.timer.focusCount > 0 && (salonPhase === 'returning' || salonPhase === 'gathering') && session.connected && <section className={`return-band ${salonPhase}`} aria-label="Next focus">
-          <div className="return-copy"><span>{salonPhase === 'returning' ? 'Focus returning soon' : 'Ready for another?'}</span><strong>{salonPhase === 'returning' ? `${formatRemaining(milliseconds)} until the next focus` : `${readyCount} ${readyCount === 1 ? 'person is' : 'people are'} ready`}</strong></div>
-          <div className="return-presence" aria-label="Your next-focus status"><button aria-label="Join the next focus" aria-pressed={selfPresence === 'ready'} onClick={() => session.setPresence('ready')}>Ready</button><button aria-label="Stay on break" aria-pressed={selfPresence === 'here'} onClick={() => session.setPresence('here')}>Stay on break</button><button aria-label="Pause my presence" aria-pressed={selfPresence === 'away'} onClick={() => session.setPresence('away')}>Away</button></div>
-          {salonPhase === 'gathering' && <button className="return-start" onClick={() => session.command({type: 'start'})}>{session.isHost ? 'Start next focus' : 'Ask to start next focus'}</button>}
-        </section>}
-
-        <div className="surface-stack">
-          <section className="focus-console" hidden={activeSurface !== null} aria-label="Focus timer">
-            {(session.completion || reviewArtifact) ? <CompletionRitual artifact={(session.completion || reviewArtifact)!} outcome={session.completion?.mode === 'focus' ? ritual.finishLine : undefined} onCarryForward={session.workspaceWritable && ritual.finishLine ? () => { store.setRow('tasks', crypto.randomUUID(), {text: ritual.finishLine, done: false, createdAt: Date.now(), createdBy: session.profile.name, ownerId: session.profile.memberId, ownerName: session.profile.name, completedAt: 0}); ritual.clearAim(); session.dismissCompletion(); setReviewArtifact(null); setActiveSurface('workspace'); } : undefined} onClose={() => { if (session.completion?.mode === 'focus') ritual.clearAim(); session.dismissCompletion(); setReviewArtifact(null); }} /> : <>
-              <p className="surface-kicker"><Sparkles size={13} /> {stateCopy}</p>
-              {session.proposal && <div className="proposal"><span><Crown size={14} /> {session.proposal.fromName} asks to {session.proposal.command.type === 'mode' ? `switch to ${session.proposal.command.mode}` : session.proposal.command.type}</span>{session.isHost ? <div><button onClick={() => session.approve(session.proposal!.id)}>Allow</button><button onClick={() => session.dismiss(session.proposal!.id)}>Not now</button></div> : <small>Waiting for the host</small>}</div>}
-              {session.connected && session.participants.length > 0 && session.timer.mode === 'focus' && session.timer.status !== 'running' && <BlockAim ritual={ritual} sessionId={session.timer.sessionId} />}
-              {session.timer.status === 'running' && ritual.finishLine && <div className="held-aim"><span>Finish line</span><strong>{ritual.finishLine}</strong></div>}
-              <div className="timer-wrap"><div className="orbit" style={{'--progress': `${Math.max(0, Math.min(1, progress)) * 360}deg`} as React.CSSProperties} /><div className="timer" role="timer" aria-live="off">{formatRemaining(milliseconds)}</div></div>
-              <div className="timer-meta"><button className="tempo-link" aria-label="Adjust focus timing" onClick={(event) => openSurface('tempo', event.currentTarget)}><Settings size={12} /> {MODES.find((mode) => mode.id === session.timer.mode)?.label} · {Math.round(session.timer.durationMs / 60_000)} min</button></div>
-              <div className="timer-actions"><button className="primary" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})}>{session.timer.status === 'running' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}{session.isHost ? modeActionLabel : `Ask to ${actionLabel.toLowerCase()} ${timerIsFocus ? 'focus' : 'break'}`}</button><button className="secondary-action" onClick={() => session.command({type: 'reset'})} aria-label={session.isHost ? 'Reset timer' : 'Ask host to reset timer'}><RotateCcw size={17} /></button></div>
-              {session.artifacts[0] && <button className="last-ember" onClick={() => setReviewArtifact(session.artifacts[0])}><Flame size={13} fill="currentColor" /> Last focus · {Math.round(session.artifacts[0].durationMs / 60_000)}m</button>}
-            </>}
-          </section>
-
-          <section className="tool-surface" hidden={activeSurface !== 'workspace'} aria-labelledby="surface-workspace"><div className="surface-header"><div><p>Shared · for later</p><h2 id="surface-workspace" tabIndex={-1}>Board</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Board"><X size={18} /></button></div><Workspace profile={session.profile} participants={session.participants} writable={session.workspaceWritable} onFocusNext={(outcome) => { ritual.setFinishLine(outcome); setActiveSurface(null); }} /></section>
-          <section className="tool-surface" hidden={activeSurface !== 'environment'} aria-labelledby="surface-environment"><div className="surface-header"><div><p>Room + this device</p><h2 id="surface-environment" tabIndex={-1}>Scene</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Scene"><X size={18} /></button></div><EnvironmentLab backdrop={backdrop} audio={audio} queue={session.mediaQueue} role={session.role} memberId={session.profile.memberId} floor={isFloor(session.timer)} addSource={session.enqueueMedia} moveItem={session.moveMedia} removeItem={session.removeMedia} selectItem={session.selectMedia} setPolicy={session.setDeckPolicy} /></section>
-          <section className="tool-surface" hidden={activeSurface !== 'tempo'} aria-labelledby="surface-tempo"><div className="surface-header"><div><p>Shared clock</p><h2 id="surface-tempo" tabIndex={-1}>Timing</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Timing"><X size={18} /></button></div>
-            <div className="mode-switcher">{MODES.map((mode) => <button aria-pressed={session.timer.mode === mode.id} className={session.timer.mode === mode.id ? 'active' : ''} key={mode.id} onClick={() => session.command({type: 'mode', mode: mode.id})}>{mode.label}</button>)}</div>
-            <div className="timer-settings"><label>Focus <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.focus / 60_000} id="focus-duration" /> min</span></label><label>Short break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.shortBreak / 60_000} id="short-duration" /> min</span></label><label>Long break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.longBreak / 60_000} id="long-duration" /> min</span></label><label className="auto-setting"><input type="checkbox" defaultChecked={session.timer.autoAdvance} id="auto-advance" /> Auto-start breaks</label><button disabled={!session.isHost} onClick={() => { const get = (id: string) => Number((document.getElementById(id) as HTMLInputElement).value) * 60_000; session.updateSettings({focus: get('focus-duration'), shortBreak: get('short-duration'), longBreak: get('long-duration')}, (document.getElementById('auto-advance') as HTMLInputElement).checked); }}>{session.isHost ? 'Save timing' : 'Host controls timing'}</button></div>
-            <button className="text-action" onClick={assist.requestNotifications}>{assist.notifications ? <Bell size={14} /> : <BellOff size={14} />}{assist.notifications ? 'Completion alerts on' : 'Enable completion alerts'}</button>
-          </section>
-          <section className="tool-surface" hidden={activeSurface !== 'room'} aria-labelledby="surface-room"><div className="surface-header"><div><p>{legacyAccess ? 'Legacy open room' : 'Private room'}</p><h2 id="surface-room" tabIndex={-1}>Room</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Room"><X size={18} /></button></div>
-            <div className="room-editor"><span className={`status-dot ${session.connected ? 'online' : ''}`} /><strong>{legacyAccess ? 'Open by link' : 'Invitation only'}</strong>{(legacyAccess || ['owner', 'steward'].includes(session.role)) && <button onClick={() => { void copyInvite(); }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : legacyAccess ? 'Copy link' : 'Create invite'}</button>}</div>
-            <People participants={session.participants} profile={session.profile} timer={session.timer} hostId={session.hostId} isHost={session.isHost} editProfile={() => setEditingProfile(true)} transferHost={session.transferHost} setPresence={session.setPresence} viewerRole={session.role} revokeMember={legacyAccess ? undefined : session.revokeMember} />
-            {editingProfile && <div className="profile-card"><ProfileEditor profile={session.profile} onChange={session.updateProfile} onClose={() => setEditingProfile(false)} /></div>}
-            <Porch messages={session.porchMessages} floor={isFloor(session.timer)} connected={session.connected} release={session.socialRelease} onSend={session.sendPorchMessage} onPromote={session.workspaceWritable ? promotePorchMessage : undefined} />
-            <div className="surface-section-heading"><strong>Quiet signals</strong><small>{isFloor(session.timer) ? 'They wait without interrupting focus.' : 'A small way to respond without starting a conversation.'}</small></div>
-            <div className="cue-deck">{SOCIAL_SIGNALS.map((cue) => <button key={cue.id} onClick={() => { session.signal(cue.id); setSignalConfirmation(`${cue.label} sent`); }}><b>{cue.symbol}</b><span><strong>{cue.label}</strong><small>{cue.meaning}</small></span></button>)}</div>
-            <div className="inline-controls"><button onClick={() => audio.setSocialCuesEnabled(!audio.socialCuesEnabled)}>{audio.socialCuesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}{audio.socialCuesEnabled ? 'Social sounds on' : 'Social sounds off'}</button></div>
-            <div className="cue-status" aria-live="polite">{signalConfirmation}</div>
-            <div className="reactions" aria-label="Send a reaction">{[['🔥','fire'], ['✨','sparkles'], ['🫡','salute'], ['💧','water']].map(([emoji, name]) => <button aria-label={`Send ${name} reaction`} key={emoji} onClick={() => session.react(emoji)}>{emoji}</button>)}</div>
-            <small className="reaction-policy">{isFloor(session.timer) ? 'Reactions wait for the break.' : 'Reactions appear now.'}</small>
-            {!legacyAccess && protectedAccess ? <details className="room-access-details">
-              <summary>Invitations &amp; access</summary>
-              <RoomAccess role={protectedAccess.admission.role} busy={invitationBusy} copied={copied} onCopyInvitation={(role) => copyInvite(false, role)} onRotateInvitation={(role) => copyInvite(true, role)} />
-              {invitationPayload && <section className="invitation-ready" aria-label="Prepared invitation"><label>Invitation ready<textarea readOnly value={invitationPayload} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" onClick={() => { void copyPreparedInvitation(); }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy invitation'}</button><small>Share the room address and invitation code privately.</small></section>}
-              <p className="surface-note">Profiles are editable; access is tied to this device.</p>
-            </details> : <p className="surface-note">This older room remains open to anyone with its link. Make a new room for private access.</p>}
-          </section>
+      <header className="porch-header">
+        <button className="porch-place" onClick={() => setTunerOpen((open) => !open)} aria-expanded={tunerOpen}>
+          <span className="porch-mark">P</span><span><strong>The Porch</strong><small>{backdrop.enabled && !backdrop.reducedSensory ? backdrop.source.label.replace(' · live', '') : backdrop.reducedSensory ? 'Quiet window' : 'Glow window'} · change the view</small></span>
+        </button>
+        <div className="porch-company">
+          <button aria-label={glassVisible ? 'Glass on' : 'Glass off'} onClick={() => setGlassVisible((visible) => !visible)} aria-pressed={glassVisible}>{glassVisible ? <Eye size={16} /> : <EyeOff size={16} />}<span>{glassVisible ? 'Glass on' : 'Glass off'}</span></button>
+          <button aria-label={`${session.participants.length || 0} here`} onClick={() => setPeopleOpen((open) => !open)} aria-expanded={peopleOpen}><Users size={16} /><span>{session.participants.length || '—'} here</span></button>
+          <button aria-label={copied ? 'Invitation copied' : 'Invite'} className="invite-button" onClick={() => void share()}>{copied ? <Check size={15} /> : <Copy size={15} />}<span>{copied ? 'Copied' : 'Invite'}</span></button>
         </div>
+      </header>
 
-        <nav className="tool-dock" aria-label="Instrument surfaces">{surfaceButtons.map((surface) => <button key={surface.label} aria-label={surface.label} aria-pressed={activeSurface === surface.id} className={activeSurface === surface.id ? 'active' : ''} onClick={(event) => surface.id ? openSurface(surface.id, event.currentTarget) : setActiveSurface(null)}>{surface.icon}<span>{surface.label}</span></button>)}</nav>
-        <div className="instrument-status"><span>{session.connected ? 'synced' : 'reconnecting'}</span><span>{activeSurface ? surfaceLabel[activeSurface] : session.isHost ? 'you are host' : 'hosted tempo'}</span></div>
-      </aside>
+      {tunerOpen && <section className="porch-tuner" aria-label="Change the shared view">
+        <div className="tuner-heading"><div><small>THE WINDOW</small><h2>Where should we look?</h2></div><button onClick={() => setTunerOpen(false)} aria-label="Close the tuner"><X size={18} /></button></div>
+        <div className="tuner-shelf">
+          {SCENE_PRESETS.map((source) => <button key={source.id} className={session.media.source.id === source.id && backdrop.enabled ? 'active' : ''} onClick={() => useSource(source)}><span style={{background: source.accent}}><Map size={17} /></span><strong>{source.label.replace(' · live', '')}</strong><small>{source.description}</small></button>)}
+          <button className={!backdrop.enabled && !backdrop.reducedSensory ? 'active' : ''} onClick={() => { backdrop.setEnabled(false); backdrop.setReducedSensory(false); }}><span className="glow-chip"><Radio size={17} /></span><strong>Glow</strong><small>A slow light of our own</small></button>
+          <button className={backdrop.reducedSensory ? 'active' : ''} onClick={quiet}><span className="quiet-chip"><EyeOff size={17} /></span><strong>Quiet</strong><small>Nothing moving behind the glass</small></button>
+        </div>
+        <div className="tuner-compose"><input value={draftSource} onChange={(event) => setDraftSource(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addSource()} placeholder="Paste a YouTube video, live feed, or playlist" /><button onClick={addSource}><Plus size={15} /> Add</button></div>
+        <div className="tuner-local"><button onClick={() => backdrop.setMuted(!backdrop.muted)}>{backdrop.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}{backdrop.muted ? 'Unmute for me' : 'Mute for me'}</button><button onClick={() => void audio.toggle()}>{audio.enabled ? <Volume2 size={15} /> : <VolumeX size={15} />}{audio.enabled ? 'Warm sound on' : 'Warm sound off'}</button><small>{sourceStatus}</small></div>
+      </section>}
 
-      {socialTreatment && <><div className="social-announcement" role="status" aria-live="polite" aria-atomic="true">{socialTreatment.text}</div><div className="social-bloom-visual" key={socialTreatment.id} aria-hidden="true"><span>{socialTreatment.glyph}</span></div></>}
+      {peopleOpen && <aside className="porch-sidecar" aria-label="People and conversation">
+        <div className="sidecar-heading"><div><small>ON THE PORCH</small><h2>{session.participants.length} {session.participants.length === 1 ? 'person' : 'people'}</h2></div><button onClick={() => setPeopleOpen(false)} aria-label="Close people"><X size={18} /></button></div>
+        <div className="porch-people">{session.participants.map((person) => <div key={person.memberId}><span style={{'--person-color': person.color} as React.CSSProperties}>{person.emoji}</span><p><strong>{person.name}{person.memberId === session.profile.memberId ? ' · you' : ''}</strong><small>{person.intention || 'here now'}</small></p></div>)}</div>
+        <Porch messages={session.porchMessages} floor={false} connected={session.connected} release={session.socialRelease} onSend={session.sendPorchMessage} />
+        {invitationPayload && <label className="porch-share-copy">Invite<textarea readOnly value={invitationPayload} onFocus={(event) => event.currentTarget.select()} /></label>}
+      </aside>}
+
+      <nav className="porch-tools" aria-label="Things to use on the porch">
+        {([{id: 'select', label: 'Move', icon: <Hand size={19} />}, {id: 'draw', label: 'Draw', icon: <PenLine size={19} />}, {id: 'note', label: 'Note', icon: <StickyNote size={19} />} ] as const).map((item) => <button key={item.id} className={tool === item.id ? 'active' : ''} aria-pressed={tool === item.id} onClick={() => setTool(item.id)}>{item.icon}<span>{item.label}</span></button>)}
+        <button onClick={() => setPeopleOpen(true)}><MessageCircle size={19} /><span>Talk</span></button>
+      </nav>
+      <div className="porch-connection"><span className={session.connected ? 'online' : ''} />{session.connected ? 'together' : 'reconnecting'}</div>
       <div className="room-live" aria-live="polite">{session.notice}</div>
     </main>
-    <ArrivalVeil
-      state={arrivalState}
-      backgroundRef={instrumentRef}
-      onCreate={async (input) => {
-        session.updateProfile({name: input.displayName, emoji: input.emoji});
-        if (input.setup === 'quiet') applyQuietBoundary();
-        if (await access.create({...session.profile, name: input.displayName, emoji: input.emoji})) setJustCreated(true);
-      }}
-      onCopyInvitation={() => invitationPayload ? copyPreparedInvitation() : copyInvite()}
-      onEnterCreatedRoom={() => setJustCreated(false)}
-      onEnter={(input) => {
-        session.updateProfile({name: input.displayName, emoji: input.emoji});
-        if (input.setup === 'quiet') applyQuietBoundary();
-        void access.enter({...session.profile, name: input.displayName, emoji: input.emoji}, input.invitationCode ?? '');
-      }}
-      onRetry={() => { void access.retry(); }}
-      onReturnHome={() => window.location.assign(window.location.pathname)}
-      onLeaveRoom={() => window.location.assign(window.location.pathname)}
-    />
-    </>
-  );
+    <ArrivalVeil state={arrivalState} backgroundRef={backgroundRef}
+      onCreate={async (input) => { session.updateProfile({name: input.displayName, emoji: input.emoji}); if (input.setup === 'quiet') quiet(); if (await access.create({...session.profile, name: input.displayName, emoji: input.emoji})) setJustCreated(true); }}
+      onCopyInvitation={() => void share()} onEnterCreatedRoom={() => setJustCreated(false)}
+      onEnter={(input) => { session.updateProfile({name: input.displayName, emoji: input.emoji}); if (input.setup === 'quiet') quiet(); void access.enter({...session.profile, name: input.displayName, emoji: input.emoji}, input.invitationCode ?? ''); }}
+      onRetry={() => { void access.retry(); }} onReturnHome={() => window.location.assign(window.location.pathname)} onLeaveRoom={() => window.location.assign(window.location.pathname)} />
+  </>;
 }
-
-export default App;

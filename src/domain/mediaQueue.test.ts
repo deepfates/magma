@@ -39,10 +39,11 @@ describe('server-authoritative listening queue', () => {
     expect(removeMedia(staged, 'mq_secondit')).toBeNull();
   });
 
-  it('keeps deck policy and role authority explicit', () => {
+  it('lets every person arrange the shared background', () => {
     expect(canArrangeQueue('member', 'open')).toBe(true);
-    expect(canArrangeQueue('member', 'stewarded')).toBe(false);
+    expect(canArrangeQueue('member', 'stewarded')).toBe(true);
     expect(canArrangeQueue('steward', 'stewarded')).toBe(true);
+    expect(canArrangeQueue('guest', 'stewarded')).toBe(true);
     expect(setDeckPolicy(createMediaQueue(TREASURE_ISLAND), 'stewarded').policy).toBe('stewarded');
   });
 

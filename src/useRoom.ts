@@ -323,7 +323,7 @@ export const useRoom = (
     socialBloom,
     profile: {...profile, memberId: sessionMemberId},
     role: admission?.role ?? 'member',
-    workspaceWritable: admission?.role !== 'guest',
+    workspaceWritable: connected,
     remaining,
     roomNow,
     command,

@@ -265,7 +265,7 @@ export class RoomAccessController {
     return this.storage.transaction(async (transaction) => {
       const state = await transaction.get<DurableAccessState>(ACCESS_STATE_KEY);
       const actor = state && activeMember(state, actorDeviceId);
-      if (!state?.config || !actor || !actorCanManage(actor, role)) return {ok: false, reason: 'forbidden'};
+      if (!state?.config || !actor || (role !== 'member' && !actorCanManage(actor, role))) return {ok: false, reason: 'forbidden'};
       if (options.rotate && actor.role !== 'owner') return {ok: false, reason: 'forbidden'};
       if (options.operationNonce && Object.values(state.invites).some((invite) => invite.operationNonce === options.operationNonce)) {
         return {ok: false, reason: 'duplicate-operation'};

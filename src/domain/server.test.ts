@@ -281,7 +281,7 @@ describe('Magma room deadline and restart invariants', () => {
     expect(room.broadcasts.filter((message) => message.type === 'social.bloom')).toHaveLength(1);
   });
 
-  it('rejects a proposal whose originating focus elapsed before approval', async () => {
+  it('lets any connected person operate the clock directly', async () => {
     const room = new FakeRoom();
     await room.storage.put(TIMER_KEY, runningFocus());
     const server = new MagmaRoom(room as never);
@@ -292,13 +292,8 @@ describe('Magma room deadline and restart invariants', () => {
     await connect(server, room, guest, profile('guest-member', 'Guest'));
 
     await send(server, guest, {type: 'timer.command', command: {type: 'pause'}, expectedRevision: 1});
-    const proposal = latestSnapshot(room.broadcasts)?.proposal;
-    expect(proposal).toMatchObject({baseRevision: 1, baseSessionId: 'focus-session'});
-
-    vi.setSystemTime(31_000);
-    await send(server, host, {type: 'timer.approve', proposalId: proposal!.id});
-    expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({mode: 'shortBreak', status: 'running'});
-    expect(room.broadcasts.filter((message) => message.type === 'session.complete')).toHaveLength(1);
+    expect(latestSnapshot(room.broadcasts)?.proposal).toBeNull();
+    expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({mode: 'focus', status: 'paused'});
   });
 
   it('rejects stale settings instead of aborting the newly auto-started break', async () => {
@@ -464,7 +459,7 @@ describe('server-authoritative Listening Deck', () => {
     expect((await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))?.items).toHaveLength(2);
   });
 
-  it('enforces open/stewarded roles and does not let legacy source commands bypass the deck', async () => {
+  it('lets everyone arrange backgrounds and does not let legacy source commands bypass the queue', async () => {
     const room = new FakeRoom();
     const server = new MagmaRoom(room as never);
     await server.onStart();
@@ -486,13 +481,10 @@ describe('server-authoritative Listening Deck', () => {
     const itemId = queue.items[1].id;
     await send(server, member, {type: 'media.queue.select', opId: 'queue-member-select-1', itemId, expectedRevision: queue.revision});
     queue = (await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))!;
-    expect(queue.activeItemId).not.toBe(itemId);
-    await send(server, steward, {type: 'media.queue.select', opId: 'queue-steward-select-1', itemId, expectedRevision: queue.revision});
-    queue = (await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))!;
     expect(queue.activeItemId).toBe(itemId);
 
     await send(server, guest, enqueue('queue-guest-add-1', 'lmnopqrstuv'));
-    expect((await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))?.items).toHaveLength(2);
+    expect((await room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY))?.items).toHaveLength(3);
     const media = (await room.storage.get<RoomMediaState>(MEDIA_KEY))!;
     await send(server, member, {
       type: 'media.command', command: {type: 'source', source: source('lmnopqrstuv')},
@@ -527,7 +519,7 @@ describe('authenticated durable workspace authority', () => {
     expect(replica.getCell('tasks', 'task-one', 'text')).toBe('Converge honestly');
   });
 
-  it('keeps guests read-only and never exposes the old HTTP store endpoint', async () => {
+  it('lets every admitted person edit the board and never exposes the old HTTP store endpoint', async () => {
     const room = new FakeRoom();
     const server = new MagmaRoom(room as never);
     await server.onStart();
@@ -537,7 +529,7 @@ describe('authenticated durable workspace authority', () => {
     const local = createMergeableStore();
     local.setCell('sparks', 'guest-spark', 'text', 'Must not publish');
     await server.onMessage(encodeWorkspaceChanges(contentAsChanges(local.getMergeableContent())), guest as never);
-    expect(room.rawBroadcasts).toEqual([]);
+    expect(room.rawBroadcasts).toHaveLength(1);
     expect(await server.onRequest(new Request('https://example.test/store') as never)).toMatchObject({status: 404});
   });
 
