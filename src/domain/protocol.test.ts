@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {isClientMessage} from './protocol';
+import {DAYLIGHT_OVERLAY, KEXP_RADIO} from './scene';
 
 describe('Porch client protocol', () => {
   it('accepts bounded presence, message, and semantic signal commands', () => {
@@ -21,5 +22,11 @@ describe('Porch client protocol', () => {
     const durations = {focus: 60_000, shortBreak: 30_000, longBreak: 90_000};
     expect(isClientMessage({type: 'timer.settings', durations, autoAdvance: true, expectedRevision: 3, expectedSessionId: 'session-123'})).toBe(true);
     expect(isClientMessage({type: 'timer.settings', durations, autoAdvance: true})).toBe(false);
+  });
+
+  it('accepts declared scene layers and rejects undeclared adapters', () => {
+    expect(isClientMessage({type: 'scene.command', command: {type: 'radio', radio: KEXP_RADIO}, expectedRevision: 0})).toBe(true);
+    expect(isClientMessage({type: 'scene.command', command: {type: 'overlays', overlays: [DAYLIGHT_OVERLAY]}, expectedRevision: 1})).toBe(true);
+    expect(isClientMessage({type: 'scene.command', command: {type: 'radio', radio: {...KEXP_RADIO, streamUrl: 'http://radio.test'}}, expectedRevision: 0})).toBe(false);
   });
 });

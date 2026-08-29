@@ -11,6 +11,9 @@ import {useAmbientAudio} from './useAmbientAudio';
 import {useRoom} from './useRoom';
 import {useRoomAccess} from './useRoomAccess';
 import {useYouTubeBackdrop} from './useYouTubeBackdrop';
+import {DAYLIGHT_OVERLAY, KEXP_RADIO} from './domain/scene';
+import {RadioLayer, WorldOverlays} from './SceneLayers';
+import {useScenePreferences} from './useScenePreferences';
 
 const PorchCanvas = lazy(() => import('./PorchCanvas').then((module) => ({default: module.PorchCanvas})));
 
@@ -43,6 +46,7 @@ export default function App() {
   const remaining = useClock(session.remaining);
   const backdrop = useYouTubeBackdrop(session.media.source, session.connected);
   const audio = useAmbientAudio();
+  const scenePreferences = useScenePreferences();
   const backgroundRef = useRef<HTMLElement | null>(null);
   const [tool, setTool] = useState<PorchTool>('select');
   const [glassVisible, setGlassVisible] = useState(true);
@@ -104,6 +108,8 @@ export default function App() {
       <section className="porch-world" aria-label="The shared window">
         <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canShare={session.connected} muted={backdrop.muted} />
         {(!backdrop.enabled || backdrop.reducedSensory) && <div className="porch-glow">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 0.8 : 0.25} presence={session.participants.length} pulse={0} phase={0} />}<span>{backdrop.reducedSensory ? 'Quiet' : 'Glow'}</span></div>}
+        <WorldOverlays overlays={session.scene.overlays} visible={scenePreferences.overlaysVisible} />
+        <RadioLayer source={session.scene.radio} muted={scenePreferences.radioMuted} volume={scenePreferences.radioVolume} />
       </section>
 
       {porchAdmitted && <Suspense fallback={<div className="porch-canvas-status">Opening the glass…</div>}>
@@ -133,7 +139,12 @@ export default function App() {
           <button className={backdrop.reducedSensory ? 'active' : ''} onClick={quiet}><span className="quiet-chip"><EyeOff size={17} /></span><strong>Quiet</strong><small>Nothing moving behind the glass</small></button>
         </div>
         <div className="tuner-compose"><input value={draftSource} onChange={(event) => setDraftSource(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addSource()} placeholder="Paste a YouTube video, live feed, or playlist" /><button onClick={addSource}><Plus size={15} /> Add</button></div>
+        <div className="tuner-scene-layers">
+          <span>Radio</span><button className={!session.scene.radio ? 'active' : ''} onClick={() => session.sceneCommand({type: 'radio', radio: null})}>Off</button><button className={session.scene.radio?.id === KEXP_RADIO.id ? 'active' : ''} onClick={() => session.sceneCommand({type: 'radio', radio: KEXP_RADIO})}>KEXP</button>
+          <span>Light</span><button className={session.scene.overlays.some((item) => item.id === DAYLIGHT_OVERLAY.id) ? 'active' : ''} onClick={() => session.sceneCommand({type: 'overlays', overlays: session.scene.overlays.some((item) => item.id === DAYLIGHT_OVERLAY.id) ? [] : [DAYLIGHT_OVERLAY]})}>Daylight</button><button onClick={() => scenePreferences.setOverlaysVisible(!scenePreferences.overlaysVisible)}>{scenePreferences.overlaysVisible ? 'Hide for me' : 'Show for me'}</button>
+        </div>
         <div className="tuner-local"><button onClick={() => backdrop.setMuted(!backdrop.muted)}>{backdrop.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}{backdrop.muted ? 'Unmute for me' : 'Mute for me'}</button><button onClick={() => void audio.toggle()}>{audio.enabled ? <Volume2 size={15} /> : <VolumeX size={15} />}{audio.enabled ? 'Warm sound on' : 'Warm sound off'}</button><small>{sourceStatus}</small></div>
+        {session.scene.radio && <div className="tuner-local"><button onClick={() => { const unmuting = scenePreferences.radioMuted; scenePreferences.setRadioMuted(!scenePreferences.radioMuted); if (unmuting) window.dispatchEvent(new Event('porch:radio-play')); }}>{scenePreferences.radioMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}{scenePreferences.radioMuted ? 'Hear radio' : 'Mute radio'}</button><label className="radio-volume">Volume <input aria-label="Radio volume" type="range" min="0" max="1" step="0.05" value={scenePreferences.radioVolume} onChange={(event) => scenePreferences.setRadioVolume(Number(event.target.value))} /></label><a href={session.scene.radio.attribution.url ?? undefined} target="_blank" rel="noreferrer">{session.scene.radio.attribution.label}</a></div>}
       </section>}
 
       {peopleOpen && <aside className="porch-sidecar" aria-label="People and conversation">

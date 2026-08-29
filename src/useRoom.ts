@@ -8,6 +8,7 @@ import type {YouTubeSource} from './domain/youtube';
 import type {Participant, Profile, RoomSnapshot, SessionArtifact, TimerProposal} from './domain/protocol';
 import type {PorchMessage, PresenceChoice, RoomCueId, RoomSignal, SocialRelease} from './domain/porch';
 import type {RoomAdmission} from './accessClient';
+import {createScene, type PorchScene, type SceneCommand} from './domain/scene';
 
 export type Reaction = {id: string; emoji: string; from: string};
 
@@ -48,6 +49,7 @@ export const useRoom = (
   const [timer, setTimer] = useState<TimerState>(createTimer());
   const [media, setMedia] = useState<RoomMediaState>(createMediaState());
   const [mediaQueue, setMediaQueue] = useState<MediaQueueState>(() => createMediaQueue(createMediaState().source));
+  const [scene, setScene] = useState<PorchScene>(() => createScene(createMediaState().source));
   const [mediaReady, setMediaReady] = useState(false);
   const [serverOffset, setServerOffset] = useState(0);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -89,6 +91,7 @@ export const useRoom = (
       setTimer(createTimer());
       setMedia(createMediaState());
       setMediaQueue(createMediaQueue(createMediaState().source));
+      setScene(createScene(createMediaState().source));
       setMediaReady(false);
       setParticipants([]);
       setHostId(null);
@@ -145,6 +148,7 @@ export const useRoom = (
               setMediaReady(true);
             }
             if (snapshot.mediaQueue) setMediaQueue(snapshot.mediaQueue);
+            if (snapshot.scene) setScene(snapshot.scene);
             if (!Number.isFinite(bestRtt.current)) setServerOffset(snapshot.serverNow - Date.now());
           }
           if (data.type === 'clock.pong') {
@@ -284,6 +288,9 @@ export const useRoom = (
   const mediaCommand = useCallback((command: MediaCommand) => send({
     type: 'media.command', command, expectedRevision: media.revision, expectedItemId: mediaQueue.activeItemId,
   }), [media.revision, mediaQueue.activeItemId, send]);
+  const sceneCommand = useCallback((command: SceneCommand) => send({
+    type: 'scene.command', command, expectedRevision: scene.revision,
+  }), [scene.revision, send]);
   const enqueueMedia = useCallback((source: YouTubeSource, activate = false) => send({
     type: 'media.queue.enqueue', opId: crypto.randomUUID(), source, activate,
   }), [send]);
@@ -311,6 +318,7 @@ export const useRoom = (
     timer,
     media,
     mediaQueue,
+    scene,
     mediaReady,
     participants,
     hostId,
@@ -339,6 +347,7 @@ export const useRoom = (
     updateProfile,
     updateSettings,
     mediaCommand,
+    sceneCommand,
     enqueueMedia,
     moveMedia,
     removeMedia,

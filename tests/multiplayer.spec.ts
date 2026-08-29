@@ -2,7 +2,7 @@ import {expect, test, type BrowserContext, type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const blockRemoteMedia = (context: BrowserContext) => context.route(
-  /(youtube(?:-nocookie)?\.com|googlevideo\.com|ytimg\.com)/,
+  /(youtube(?:-nocookie)?\.com|googlevideo\.com|ytimg\.com|streamguys1\.com)/,
   (route) => route.abort(),
 );
 
@@ -93,6 +93,26 @@ test('everyone can tune the shared window while glass and sound remain personal'
   await first.getByRole('button', {name: /The Porch/}).click();
   await expect(first.getByRole('button', {name: 'Unmute for me', exact: true})).toBeVisible();
   await first.getByRole('button', {name: /The Porch/}).click();
+
+  await second.getByRole('button', {name: 'KEXP', exact: true}).click();
+  await expect(first.locator('audio[data-radio-source]')).toHaveAttribute('data-radio-source', 'kexp-160');
+  await expect(second.locator('audio[data-radio-source]')).toHaveAttribute('data-radio-source', 'kexp-160');
+  await second.getByRole('button', {name: 'Hear radio', exact: true}).click();
+  await first.locator('.living-window iframe').evaluate((element: HTMLIFrameElement) => { (element as HTMLIFrameElement & {porchIdentity?: string}).porchIdentity = 'visual-first'; });
+  await first.locator('audio[data-radio-source]').evaluate((element: HTMLAudioElement) => { (element as HTMLAudioElement & {porchIdentity?: string}).porchIdentity = 'radio-first'; });
+  await second.getByRole('button', {name: 'Daylight', exact: true}).click();
+  await expect(first.locator('[data-world-overlay="daylight"]')).toBeVisible();
+  await expect(second.locator('[data-world-overlay="daylight"]')).toBeVisible();
+  expect(await first.locator('audio[data-radio-source]').evaluate((element: HTMLAudioElement) => (element as HTMLAudioElement & {porchIdentity?: string}).porchIdentity)).toBe('radio-first');
+  await first.getByRole('button', {name: /The Porch/}).click();
+  await first.getByRole('button', {name: 'Hide for me', exact: true}).click();
+  await expect(first.locator('[data-world-overlay="daylight"]')).toHaveCount(0);
+  await expect(second.locator('[data-world-overlay="daylight"]')).toBeVisible();
+  await first.getByRole('button', {name: /The Porch/}).click();
+  await second.getByRole('button', {name: 'Off', exact: true}).click();
+  await expect(first.locator('audio[data-radio-source]')).toHaveAttribute('data-radio-source', 'off');
+  expect(await first.locator('.living-window iframe').evaluate((element: HTMLIFrameElement) => (element as HTMLIFrameElement & {porchIdentity?: string}).porchIdentity)).toBe('visual-first');
+  await second.getByRole('button', {name: 'KEXP', exact: true}).click();
   const glow = second.getByRole('button', {name: /^Glow/});
   await expect(glow).toBeVisible();
   await glow.click();
@@ -114,6 +134,19 @@ test('everyone can tune the shared window while glass and sound remain personal'
   await tunerInput.fill('https://www.youtube.com/playlist?list=PL590L5WQmH8fJ54F369BLDSqIwcs-TCfs');
   await second.getByRole('button', {name: 'Add', exact: true}).click();
   await expect(first.locator('.living-window iframe')).toHaveAttribute('src', /list=PL590L5WQmH8fJ54F369BLDSqIwcs-TCfs/);
+  expect(await first.locator('audio[data-radio-source]').evaluate((element: HTMLAudioElement) => (element as HTMLAudioElement & {porchIdentity?: string}).porchIdentity)).toBe('radio-first');
+
+  await second.getByLabel('Radio volume').fill('0.55');
+  await Promise.all([first.reload(), second.reload()]);
+  await expect(first.locator('audio[data-radio-source]')).toHaveAttribute('data-radio-source', 'kexp-160');
+  await expect(second.locator('audio[data-radio-source]')).toHaveAttribute('data-radio-source', 'kexp-160');
+  await expect(first.locator('[data-world-overlay="daylight"]')).toHaveCount(0);
+  await expect(second.locator('[data-world-overlay="daylight"]')).toBeVisible();
+  await first.getByRole('button', {name: /The Porch/}).click();
+  await second.getByRole('button', {name: /The Porch/}).click();
+  await expect(first.getByRole('button', {name: 'Hear radio', exact: true})).toBeVisible();
+  await expect(second.getByRole('button', {name: 'Mute radio', exact: true})).toBeVisible();
+  await expect(second.getByLabel('Radio volume')).toHaveValue('0.55');
 
   await Promise.all([firstContext.close(), secondContext.close()]);
 });

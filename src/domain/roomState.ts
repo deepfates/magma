@@ -1,13 +1,15 @@
 import type {MergeableContent} from 'tinybase/mergeable-store';
-import type {RoomMediaState} from './media';
+import {normalizeMediaState, type RoomMediaState} from './media';
 import type {MediaQueueState} from './mediaQueue';
 import type {SessionArtifact} from './protocol';
 import type {PorchMessage, RoomCueId, RoomSignal, SocialReaction, SocialRelease} from './porch';
 import type {TimerState} from './timer';
+import {createScene, type PorchScene} from './scene';
 
-export const ROOM_STATE_VERSION = 1 as const;
+export const ROOM_STATE_VERSION = 2 as const;
 export const ROOM_STATE_KEY = 'porch:room-state';
 export const ROOM_STATE_BACKUP_KEY = 'porch:room-state:backup:v1';
+export const ROOM_STATE_V1_BACKUP_KEY = 'porch:room-state:backup:v2';
 
 export const LEGACY_ROOM_KEYS = {
   timer: 'magma:timer',
@@ -27,7 +29,7 @@ export const LEGACY_ROOM_KEYS = {
   workspace: 'magma:workspace:v2',
 } as const;
 
-export type RoomStateField = keyof typeof LEGACY_ROOM_KEYS;
+export type RoomStateField = keyof typeof LEGACY_ROOM_KEYS | 'scene';
 export type StoredQueueReceipt = {memberId: string; opId: string; fingerprint: string; revision: number; outcome: string};
 export type RoomStateValues = {
   timer?: TimerState;
@@ -45,6 +47,7 @@ export type RoomStateValues = {
   signalCounts?: Partial<Record<RoomCueId, number>>;
   reactionCounts?: Record<string, number>;
   workspace?: MergeableContent;
+  scene?: PorchScene;
 };
 export type LegacyRoomStateValues = Partial<Record<RoomStateField, unknown>>;
 
@@ -59,6 +62,19 @@ export type LegacyRoomStateBackup = {
   source: 'production-keys';
   capturedAt: number;
   values: LegacyRoomStateValues;
+};
+
+export type StoredRoomStateV1 = {
+  version: 1;
+  persistedAt: number;
+  values: Omit<RoomStateValues, 'scene'>;
+};
+
+export type RoomStateV1Backup = {
+  version: 1;
+  source: 'room-state-v1';
+  capturedAt: number;
+  state: StoredRoomStateV1;
 };
 
 export class UnsupportedRoomStateVersionError extends Error {
@@ -90,7 +106,19 @@ const knownLegacyValues = (value: Record<string, unknown>): LegacyRoomStateValue
 };
 
 const knownCurrentValues = (value: Record<string, unknown>): RoomStateValues =>
-  knownLegacyValues(value) as RoomStateValues;
+  ({...(knownLegacyValues(value) as RoomStateValues), ...(Object.prototype.hasOwnProperty.call(value, 'scene') ? {scene: value.scene as PorchScene} : {})});
+
+const sceneForValues = (values: RoomStateValues, now: number) =>
+  createScene(normalizeMediaState(values.media, now).source, now);
+
+function parseStoredRoomStateV1(value: Record<string, unknown>): StoredRoomStateV1 {
+  if (!finiteTimestamp(value.persistedAt) || !isRecord(value.values)) {
+    throw new InvalidRoomStateError('Porch room state version 1 is malformed.');
+  }
+  const unknownField = Object.keys(value.values).find((field) => !(field in LEGACY_ROOM_KEYS));
+  if (unknownField) throw new InvalidRoomStateError(`Porch room state version 1 contains unknown field ${unknownField}.`);
+  return {version: 1, persistedAt: value.persistedAt, values: knownLegacyValues(value.values) as Omit<RoomStateValues, 'scene'>};
+}
 
 /** Parse the authoritative stored envelope without guessing through a future schema. */
 export function parseStoredRoomState(value: unknown): StoredRoomState {
@@ -101,10 +129,10 @@ export function parseStoredRoomState(value: unknown): StoredRoomState {
     throw new UnsupportedRoomStateVersionError(Number(value.version));
   }
   if (!finiteTimestamp(value.persistedAt) || !isRecord(value.values)) {
-    throw new InvalidRoomStateError('Porch room state version 1 is malformed.');
+    throw new InvalidRoomStateError('Porch room state version 2 is malformed.');
   }
-  const unknownField = Object.keys(value.values).find((field) => !(field in LEGACY_ROOM_KEYS));
-  if (unknownField) throw new InvalidRoomStateError(`Porch room state version 1 contains unknown field ${unknownField}.`);
+  const unknownField = Object.keys(value.values).find((field) => !(field in LEGACY_ROOM_KEYS) && field !== 'scene');
+  if (unknownField) throw new InvalidRoomStateError(`Porch room state version 2 contains unknown field ${unknownField}.`);
   return {version: ROOM_STATE_VERSION, persistedAt: value.persistedAt, values: knownCurrentValues(value.values)};
 }
 
@@ -112,14 +140,29 @@ export function migrateRoomState(
   stored: unknown,
   legacyValues: LegacyRoomStateValues,
   now: number,
-): {state: StoredRoomState; backup: LegacyRoomStateBackup | null; migrated: boolean} {
-  if (stored !== undefined) return {state: parseStoredRoomState(stored), backup: null, migrated: false};
+): {state: StoredRoomState; backup: LegacyRoomStateBackup | null; versionBackup: RoomStateV1Backup | null; migrated: boolean} {
   if (!finiteTimestamp(now)) throw new InvalidRoomStateError('Migration time must be a finite timestamp.');
+  if (stored !== undefined) {
+    if (!isRecord(stored) || !Number.isSafeInteger(stored.version)) {
+      throw new InvalidRoomStateError('Porch room state is missing a valid version.');
+    }
+    if (stored.version === 1) {
+      const prior = parseStoredRoomStateV1(stored);
+      return {
+        state: {version: ROOM_STATE_VERSION, persistedAt: now, values: {...prior.values, scene: sceneForValues(prior.values, now)}},
+        backup: null,
+        versionBackup: {version: 1, source: 'room-state-v1', capturedAt: now, state: prior},
+        migrated: true,
+      };
+    }
+    return {state: parseStoredRoomState(stored), backup: null, versionBackup: null, migrated: false};
+  }
   const priorValues = knownLegacyValues(legacyValues as Record<string, unknown>);
-  const values = priorValues as RoomStateValues;
+  const values = {...priorValues, scene: sceneForValues(priorValues as RoomStateValues, now)} as RoomStateValues;
   return {
     state: {version: ROOM_STATE_VERSION, persistedAt: now, values},
     backup: {version: 1, source: 'production-keys', capturedAt: now, values: priorValues},
+    versionBackup: null,
     migrated: true,
   };
 }

@@ -14,6 +14,8 @@ import {
 } from './roomState';
 import {createMergeableStore} from 'tinybase';
 import {contentAsChanges, decodeWorkspaceSnapshot, encodeWorkspaceChanges} from '../workspaceTransport';
+import {TREASURE_ISLAND} from './youtube';
+import {DAYLIGHT_OVERLAY, KEXP_RADIO} from './scene';
 
 const TIMER_KEY = 'magma:timer';
 const ARTIFACTS_KEY = 'magma:artifacts';
@@ -185,7 +187,7 @@ describe('versioned authoritative room storage', () => {
 
     const envelope = await room.storage.get<StoredRoomState>(ROOM_STATE_KEY);
     const backup = await room.storage.get<LegacyRoomStateBackup>(ROOM_STATE_BACKUP_KEY);
-    expect(envelope).toMatchObject({version: 1, values: {timer: {sessionId: 'legacy-session', revision: 7}}});
+    expect(envelope).toMatchObject({version: 2, values: {timer: {sessionId: 'legacy-session', revision: 7}, scene: {visual: {source: {id: 'BSWhGNXxT9A'}}}}});
     expect((envelope?.values.porchMessages as Array<{text: string}>)[0].text).toBe('Meet here tomorrow');
     expect(backup).toEqual({
       version: 1,
@@ -583,6 +585,27 @@ describe('server-authoritative Listening Deck', () => {
       expectedRevision: media.revision, expectedItemId: queue.activeItemId,
     });
     expect((await room.storage.get<RoomMediaState>(MEDIA_KEY))?.source.id).toBe('abcdefghijk');
+  });
+
+  it('converges independent shared scene layers across people and restart', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const first = new FakeConnection('first-tab');
+    const second = new FakeConnection('second-tab');
+    await connect(server, room, first, profile('first-member', 'First'));
+    await connect(server, room, second, profile('second-member', 'Second'));
+    await send(server, first, {type: 'scene.command', command: {type: 'radio', radio: KEXP_RADIO}, expectedRevision: 0});
+    await send(server, second, {type: 'scene.command', command: {type: 'overlays', overlays: [DAYLIGHT_OVERLAY]}, expectedRevision: 1});
+    const observer = new FakeConnection('observer-tab');
+    await connect(server, room, observer, profile('observer-member', 'Observer'));
+    expect(latestSnapshot(observer.sent)?.scene).toMatchObject({radio: {id: KEXP_RADIO.id}, overlays: [{id: 'daylight'}], visual: {source: {id: TREASURE_ISLAND.id}}, revision: 2});
+
+    const restarted = new MagmaRoom(room as never);
+    await restarted.onStart();
+    const returning = new FakeConnection('returning-tab');
+    await connect(restarted, room, returning, profile('returning-member', 'Returning'));
+    expect(latestSnapshot(returning.sent)?.scene).toMatchObject({radio: {id: KEXP_RADIO.id}, overlays: [{id: 'daylight'}], visual: {source: {id: TREASURE_ISLAND.id}}, revision: 2});
   });
 });
 

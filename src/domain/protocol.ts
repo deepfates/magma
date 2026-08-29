@@ -4,6 +4,7 @@ import type {DeckPolicy, MediaQueueState} from './mediaQueue';
 import type {YouTubeSource} from './youtube';
 import {ROOM_CUES, type PorchMessage, type PresenceChoice, type RoomCueId, type SocialRelease} from './porch';
 import type {AuthRole} from './auth';
+import {isRadioSource, isWorldOverlay, type PorchScene, type SceneCommand} from './scene';
 
 export type Profile = {
   memberId: string;
@@ -48,6 +49,7 @@ export type RoomSnapshot = {
   artifacts: SessionArtifact[];
   media: RoomMediaState;
   mediaQueue: MediaQueueState;
+  scene: PorchScene;
   porchMessages: PorchMessage[];
   socialRelease: SocialRelease | null;
 };
@@ -59,6 +61,7 @@ export type ClientMessage =
   | {type: 'timer.dismiss'; proposalId: string}
   | {type: 'timer.settings'; durations: TimerDurations; autoAdvance: boolean; expectedRevision: number; expectedSessionId: string}
   | {type: 'media.command'; command: MediaCommand; expectedRevision: number; expectedItemId: string}
+  | {type: 'scene.command'; command: SceneCommand; expectedRevision: number}
   | {type: 'media.queue.enqueue'; opId: string; source: YouTubeSource; activate: boolean}
   | {type: 'media.queue.move'; opId: string; itemId: string; beforeItemId: string | null; expectedRevision: number}
   | {type: 'media.queue.remove'; opId: string; itemId: string; expectedRevision: number}
@@ -118,6 +121,14 @@ export const isClientMessage = (value: unknown): value is ClientMessage => {
       return ['play', 'pause', 'seek'].includes(String(command.type))
         && typeof command.positionSeconds === 'number' && Number.isFinite(command.positionSeconds) && command.positionSeconds >= 0 && command.positionSeconds <= 86_400
         && Number.isInteger(command.playlistIndex) && Number(command.playlistIndex) >= 0 && Number(command.playlistIndex) <= 10_000;
+    }
+    case 'scene.command': {
+      if (!Number.isSafeInteger(message.expectedRevision) || Number(message.expectedRevision) < 0
+        || !message.command || typeof message.command !== 'object') return false;
+      const command = message.command as Record<string, unknown>;
+      if (command.type === 'radio') return command.radio === null || isRadioSource(command.radio);
+      return command.type === 'overlays' && Array.isArray(command.overlays)
+        && command.overlays.length <= 8 && command.overlays.every(isWorldOverlay);
     }
     case 'media.queue.enqueue':
       return OP_ID.test(String(message.opId)) && isYouTubeSource(message.source) && typeof message.activate === 'boolean';

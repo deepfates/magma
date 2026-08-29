@@ -18,6 +18,7 @@ import {
 import {
   LEGACY_ROOM_KEYS,
   ROOM_STATE_BACKUP_KEY,
+  ROOM_STATE_V1_BACKUP_KEY,
   ROOM_STATE_KEY,
   legacyEntries,
   migrateRoomState,
@@ -27,6 +28,7 @@ import {
   type RoomStateValues,
   type StoredRoomState,
 } from '../src/domain/roomState';
+import {applySceneCommand, createScene, DAYLIGHT_OVERLAY, KEXP_RADIO, normalizeScene, reconcileVisual, withVisual, type PorchScene} from '../src/domain/scene';
 import type {AuthRole} from '../src/domain/auth';
 import {
   decodeWorkspaceChanges, encodeWorkspaceChanges, encodeWorkspaceSnapshot, hasWorkspaceChanges, MAX_WORKSPACE_MESSAGE_BYTES,
@@ -65,6 +67,7 @@ type ClockSocialState = {
   socialRelease: SocialRelease | null;
   media: RoomMediaState;
   mediaQueue: MediaQueueState;
+  scene: PorchScene;
 };
 type QueueReceipt = {memberId: string; opId: string; fingerprint: string; revision: number; outcome: string};
 
@@ -164,6 +167,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   private reactionCount = 0;
   private media: RoomMediaState = createMediaState();
   private listeningQueue: MediaQueueState = createMediaQueue(createMediaState().source);
+  private scene: PorchScene = createScene(createMediaState().source);
   private hostMemberId: string | null = null;
   private proposal: RevisionBoundProposal | null = null;
   private messageTimes = new Map<string, number[]>();
@@ -201,6 +205,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     this.reactionCount = this.normalizeReactionCount(stored.reactionCount);
     this.media = normalizeMediaState(stored.media as RoomMediaState | undefined);
     this.media = {...this.media, source: this.canonicalSource(this.media.source)};
+    this.scene = reconcileVisual(normalizeScene(stored.scene, this.media.source), this.media.source);
     const storedQueue = stored.mediaQueue as MediaQueueState | undefined;
     this.listeningQueue = normalizeMediaQueue(storedQueue, this.media.source, this.media.changedAt);
     const activeItem = activeQueueItem(this.listeningQueue);
@@ -231,7 +236,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       await this.persistEnvelopeOnly(this.currentStoredValues());
       // Keep the two production keys that the previous server eagerly
       // canonicalized so a rollback reads the same active source and queue.
-      await this.persistRoomState({media: this.media, mediaQueue: this.listeningQueue});
+      await this.persistRoomState({media: this.media, mediaQueue: this.listeningQueue, scene: this.scene});
       if (migratedTinyBaseWorkspace) await this.persistRoomState({workspace: this.workspace.getMergeableContent()});
     }
     await this.settleTimer('server');
@@ -483,6 +488,24 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       return;
     }
 
+    if (parsed.type === 'scene.command') {
+      await this.enqueueRoomMutation(async () => {
+        if (parsed.expectedRevision !== this.scene.revision) {
+          connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'The room scene changed—try that again.'}));
+          connection.send(JSON.stringify(this.snapshot()));
+          return;
+        }
+        const command = parsed.command.type === 'radio'
+          ? {type: 'radio' as const, radio: parsed.command.radio?.id === KEXP_RADIO.id ? KEXP_RADIO : null}
+          : {type: 'overlays' as const, overlays: parsed.command.overlays.some((overlay) => overlay.id === DAYLIGHT_OVERLAY.id) ? [DAYLIGHT_OVERLAY] : []};
+        const scene = applySceneCommand(this.scene, command, Date.now(), participant.memberId);
+        await this.persistRoomState({scene});
+        this.scene = scene;
+        this.broadcastSnapshot();
+      });
+      return;
+    }
+
     if (parsed.type.startsWith('media.queue.')) {
       await this.enqueueRoomMutation(async () => {
         await this.settleTimer('server');
@@ -560,12 +583,14 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         const nextMedia = next.activeItemId !== current.activeItemId
           ? applyMediaCommand(this.media, {type: 'source', source: activeQueueItem(next).source}, Date.now(), participant.memberId)
           : this.media;
+        const nextScene = nextMedia === this.media ? this.scene : withVisual(this.scene, nextMedia.source, Date.now(), participant.memberId);
         const receipts = [...this.mediaQueueReceipts, {
           memberId: participant.memberId, opId: command.opId, fingerprint, revision: next.revision, outcome,
         }].slice(-MAX_MEDIA_QUEUE_RECEIPTS);
-        await this.persistRoomState({mediaQueue: next, media: nextMedia, mediaQueueReceipts: receipts});
+        await this.persistRoomState({mediaQueue: next, media: nextMedia, scene: nextScene, mediaQueueReceipts: receipts});
         this.listeningQueue = next;
         this.media = nextMedia;
+        this.scene = nextScene;
         this.mediaQueueReceipts = receipts;
         connection.send(JSON.stringify({type: 'media.queue.accepted', opId: command.opId, revision: next.revision, outcome}));
         this.broadcastSnapshot();
@@ -738,6 +763,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     let reactionCounts = this.reactionCounts;
     let media = this.media;
     let mediaQueue = this.listeningQueue;
+    let scene = this.scene;
     const newFocusCompletions: Array<{artifact: SessionArtifact; release: SocialRelease}> = [];
     let completedAnyPhase = false;
 
@@ -788,6 +814,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         if (activated.activeItemId !== mediaQueue.activeItemId) {
           mediaQueue = activated;
           media = applyMediaCommand(media, {type: 'source', source: activeQueueItem(activated).source}, now, controllerId);
+          scene = withVisual(scene, media.source, now, controllerId);
         } else mediaQueue = activated;
       }
       timer = result.timer;
@@ -799,7 +826,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     }
     const state: ClockSocialState = {
       timer, artifacts, phaseParticipants, porchMessages: this.porchMessages, heldSignals, heldReactions,
-      reactionCount, signalCounts, reactionCounts, socialRelease, media, mediaQueue,
+      reactionCount, signalCounts, reactionCounts, socialRelease, media, mediaQueue, scene,
     };
     await this.commitClockAndSocial(state);
     this.adoptClockAndSocial(state);
@@ -831,6 +858,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       signalCounts: this.signalCounts,
       reactionCounts: this.reactionCounts,
       workspace: this.workspace.getMergeableContent(),
+      scene: this.scene,
     };
   }
 
@@ -857,7 +885,8 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         return;
       }
       await transaction.put({
-        [ROOM_STATE_BACKUP_KEY]: checked.backup!,
+        ...(checked.backup ? {[ROOM_STATE_BACKUP_KEY]: checked.backup} : {}),
+        ...(checked.versionBackup ? {[ROOM_STATE_V1_BACKUP_KEY]: checked.versionBackup} : {}),
         [ROOM_STATE_KEY]: checked.state,
       });
       committed = checked.state;
@@ -912,6 +941,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       socialRelease: state.socialRelease,
       media: state.media,
       mediaQueue: state.mediaQueue,
+      scene: state.scene,
     }, state.timer.status === 'running' && state.timer.endsAt !== null
       ? {type: 'set', at: state.timer.endsAt}
       : {type: 'delete'});
@@ -924,6 +954,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     const media = mediaQueue.activeItemId !== this.listeningQueue.activeItemId
       ? applyMediaCommand(this.media, {type: 'source', source: activeQueueItem(mediaQueue).source}, Date.now(), 'server')
       : this.media;
+    const scene = media === this.media ? this.scene : withVisual(this.scene, media.source, Date.now(), 'server');
     return {
       timer,
       artifacts: this.artifacts,
@@ -937,6 +968,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       socialRelease: nowFloor && !wasFloor ? null : this.socialRelease,
       media,
       mediaQueue,
+      scene,
     };
   }
 
@@ -953,6 +985,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     this.socialRelease = state.socialRelease;
     this.media = state.media;
     this.listeningQueue = state.mediaQueue;
+    this.scene = state.scene;
   }
 
   private resetReadyPresence() {
@@ -1129,6 +1162,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       artifacts: this.artifacts,
       media: this.media,
       mediaQueue: this.publicMediaQueue(),
+      scene: this.scene,
       porchMessages: isFloor(this.timer) ? [] : this.porchMessages,
       socialRelease: isFloor(this.timer) ? null : this.socialRelease,
     };
