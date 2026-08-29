@@ -11,6 +11,7 @@ import {
 } from '../src/domain/mediaQueue';
 import {isClientMessage, type Participant, type Profile, type SessionArtifact, type TimerProposal} from '../src/domain/protocol';
 import {SCENE_PRESETS, type YouTubeSource} from '../src/domain/youtube';
+import {createBlockState, normalizeBlockState, updateBlockPlan, type SharedBlockState} from '../src/domain/block';
 import {
   MAX_HELD_SIGNALS, MAX_PORCH_MESSAGES, createPorchMessage, isFloor, normalizeHeldSignals, normalizePorchMessages,
   normalizeSocialRelease, ROOM_CUES, type PorchMessage, type PresenceChoice, type RoomCueId, type RoomSignal, type SocialReaction, type SocialRelease,
@@ -24,7 +25,7 @@ import {
   migrateRoomState,
   updateStoredRoomState,
   type LegacyRoomStateValues,
-  type RoomStateField,
+  type LegacyRoomStateField,
   type RoomStateValues,
   type StoredRoomState,
 } from '../src/domain/roomState';
@@ -182,6 +183,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   private socialRelease: SocialRelease | null = null;
   private signalCounts: Partial<Record<RoomCueId, number>> = {};
   private reactionCounts: Record<string, number> = {};
+  private block: SharedBlockState = createBlockState();
   private signalTimes = new Map<string, number[]>();
   private roomSignalTimes: number[] = [];
   private readonly access: RoomAccessController;
@@ -225,6 +227,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     this.socialRelease = normalizeSocialRelease(stored.socialRelease);
     this.signalCounts = this.normalizeSignalCounts(stored.signalCounts);
     this.reactionCounts = this.normalizeReactionCounts(stored.reactionCounts);
+    this.block = normalizeBlockState(stored.block);
     const workspace = stored.workspace as MergeableContent | undefined;
     let migratedTinyBaseWorkspace = false;
     if (workspace) this.workspace.applyMergeableChanges(workspace);
@@ -439,7 +442,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         this.porchMessages = porchMessages;
         this.socialNonces = socialNonces;
         connection.send(JSON.stringify({type: 'porch.accepted', nonce: parsed.nonce, message: porchMessage}));
-        if (!isFloor(this.timer)) this.room.broadcast(JSON.stringify({type: 'porch.message', message: porchMessage}));
+        this.room.broadcast(JSON.stringify({type: 'porch.message', message: porchMessage}));
       });
       return;
     }
@@ -623,6 +626,53 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         const state = this.stateForTimerTransition(wasFloor, timer, this.phaseParticipants);
         await this.commitClockAndSocial(state);
         this.adoptClockAndSocial(state);
+        this.broadcastSnapshot();
+      });
+      return;
+    }
+
+    if (parsed.type === 'block.plan') {
+      await this.enqueueRoomMutation(async () => {
+        // Plans are owned by member id, so two people can prepare at once
+        // without turning the room-wide revision into a false conflict.
+        const block = updateBlockPlan(this.block, participant, parsed.plan, Date.now());
+        await this.persistRoomState({block});
+        this.block = block;
+        this.broadcastSnapshot();
+      });
+      return;
+    }
+
+    if (parsed.type === 'block.after') {
+      await this.enqueueRoomMutation(async () => {
+        await this.settleTimer('server');
+        if (parsed.expectedRevision !== this.timer.revision || parsed.expectedSessionId !== this.timer.sessionId) {
+          this.rejectStaleClock(connection);
+          return;
+        }
+        const now = Date.now();
+        let timer = this.timer;
+        let block = this.block;
+        if (parsed.action === 'break') {
+          if (timer.mode === 'focus') timer = applyTimerCommand(timer, {type: 'mode', mode: 'shortBreak'}, now, participant.memberId);
+          timer = applyTimerCommand(timer, {type: 'start'}, now, participant.memberId);
+        } else if (parsed.action === 'repeat') {
+          timer = applyTimerCommand(timer, {type: 'mode', mode: 'focus'}, now, participant.memberId);
+          timer = applyTimerCommand(timer, {type: 'start'}, now, participant.memberId);
+        } else {
+          timer = applyTimerCommand(timer, {type: 'mode', mode: 'focus'}, now, participant.memberId);
+          block = updateBlockPlan(block, participant, {task: '', finishLine: '', rightNow: []}, now);
+        }
+        const state = this.stateForTimerTransition(isFloor(this.timer), timer, this.phaseParticipants);
+        await this.persistRoomState({
+          timer: state.timer, phaseParticipants: state.phaseParticipants, porchMessages: state.porchMessages,
+          heldSignals: state.heldSignals, heldReactions: state.heldReactions, reactionCount: state.reactionCount,
+          signalCounts: state.signalCounts, reactionCounts: state.reactionCounts, socialRelease: state.socialRelease,
+          media: state.media, mediaQueue: state.mediaQueue, block,
+        }, timer.status === 'running' && timer.endsAt !== null ? {type: 'set', at: timer.endsAt} : {type: 'delete'});
+        this.adoptClockAndSocial(state);
+        this.block = block;
+        if (isFloor(timer)) this.resetReadyPresence();
         this.broadcastSnapshot();
       });
       return;
@@ -859,6 +909,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       reactionCounts: this.reactionCounts,
       workspace: this.workspace.getMergeableContent(),
       scene: this.scene,
+      block: this.block,
     };
   }
 
@@ -866,7 +917,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     const stored = await this.room.storage.get(ROOM_STATE_KEY);
     const legacyValues: LegacyRoomStateValues = {};
     if (stored === undefined) {
-      for (const [field, key] of Object.entries(LEGACY_ROOM_KEYS) as Array<[RoomStateField, string]>) {
+      for (const [field, key] of Object.entries(LEGACY_ROOM_KEYS) as Array<[LegacyRoomStateField, string]>) {
         const value = await this.room.storage.get(key);
         if (value !== undefined) legacyValues[field] = value;
       }
@@ -959,7 +1010,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       timer,
       artifacts: this.artifacts,
       phaseParticipants,
-      porchMessages: nowFloor && !wasFloor ? [] : this.porchMessages,
+      porchMessages: this.porchMessages,
       heldSignals: crossedFloorBoundary ? [] : this.heldSignals,
       heldReactions: crossedFloorBoundary ? [] : this.heldReactions,
       reactionCount: crossedFloorBoundary ? 0 : this.reactionCount,
@@ -1163,8 +1214,9 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       media: this.media,
       mediaQueue: this.publicMediaQueue(),
       scene: this.scene,
-      porchMessages: isFloor(this.timer) ? [] : this.porchMessages,
+      porchMessages: this.porchMessages,
       socialRelease: isFloor(this.timer) ? null : this.socialRelease,
+      block: this.block,
     };
   }
 

@@ -29,4 +29,15 @@ describe('Porch client protocol', () => {
     expect(isClientMessage({type: 'scene.command', command: {type: 'overlays', overlays: [DAYLIGHT_OVERLAY]}, expectedRevision: 1})).toBe(true);
     expect(isClientMessage({type: 'scene.command', command: {type: 'radio', radio: {...KEXP_RADIO, streamUrl: 'http://radio.test'}}, expectedRevision: 0})).toBe(false);
   });
+
+  it('accepts only bounded disposable Block plans and named next moves', () => {
+    expect(isClientMessage({type: 'block.plan', expectedRevision: 2, plan: {
+      task: 'Draft the note', finishLine: 'A readable first pass', rightNow: ['Open it', 'Write the lead'],
+    }})).toBe(true);
+    expect(isClientMessage({type: 'block.plan', expectedRevision: 2, plan: {
+      task: 'Draft', finishLine: '', rightNow: ['one', 'two', 'three', 'four'],
+    }})).toBe(false);
+    expect(isClientMessage({type: 'block.after', action: 'repeat', expectedRevision: 4, expectedSessionId: 'session-123'})).toBe(true);
+    expect(isClientMessage({type: 'block.after', action: 'celebrate', expectedRevision: 4, expectedSessionId: 'session-123'})).toBe(false);
+  });
 });

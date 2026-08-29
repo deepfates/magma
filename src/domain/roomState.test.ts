@@ -45,6 +45,8 @@ describe('versioned Porch room state', () => {
       .toThrow(InvalidRoomStateError);
     expect(() => parseStoredRoomState({version: 2, persistedAt: 2_000, values: {unversionedFutureState: true}}))
       .toThrow(InvalidRoomStateError);
+    expect(() => parseStoredRoomState({version: 1, persistedAt: 2_000, values: {block: {revision: 0, plans: {}}}}))
+      .toThrow(InvalidRoomStateError);
   });
 
   it('patches the current envelope and mirrors only explicit production keys', () => {
@@ -55,5 +57,12 @@ describe('versioned Porch room state', () => {
       'magma:porch-messages': [],
       'magma:social-nonces': ['nonce-1'],
     });
+  });
+
+  it('upgrades a v1 envelope once and accepts the resulting v2 state idempotently', () => {
+    const old = {version: 1, persistedAt: 1_000, values: productionFixture};
+    const first = migrateRoomState(old, {}, 2_000);
+    expect(first).toMatchObject({migrated: true, state: {version: 2, persistedAt: 2_000}});
+    expect(migrateRoomState(first.state, {}, 3_000)).toEqual({migrated: false, state: first.state, backup: null, versionBackup: null});
   });
 });

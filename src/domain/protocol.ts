@@ -5,6 +5,7 @@ import type {YouTubeSource} from './youtube';
 import {ROOM_CUES, type PorchMessage, type PresenceChoice, type RoomCueId, type SocialRelease} from './porch';
 import type {AuthRole} from './auth';
 import {isRadioSource, isWorldOverlay, type PorchScene, type SceneCommand} from './scene';
+import type {BlockPlanInput, SharedBlockState} from './block';
 
 export type Profile = {
   memberId: string;
@@ -52,6 +53,7 @@ export type RoomSnapshot = {
   scene: PorchScene;
   porchMessages: PorchMessage[];
   socialRelease: SocialRelease | null;
+  block: SharedBlockState;
 };
 
 export type ClientMessage =
@@ -60,6 +62,8 @@ export type ClientMessage =
   | {type: 'timer.approve'; proposalId: string}
   | {type: 'timer.dismiss'; proposalId: string}
   | {type: 'timer.settings'; durations: TimerDurations; autoAdvance: boolean; expectedRevision: number; expectedSessionId: string}
+  | {type: 'block.plan'; plan: BlockPlanInput; expectedRevision: number}
+  | {type: 'block.after'; action: 'break' | 'repeat' | 'prepare'; expectedRevision: number; expectedSessionId: string}
   | {type: 'media.command'; command: MediaCommand; expectedRevision: number; expectedItemId: string}
   | {type: 'scene.command'; command: SceneCommand; expectedRevision: number}
   | {type: 'media.queue.enqueue'; opId: string; source: YouTubeSource; activate: boolean}
@@ -108,6 +112,19 @@ export const isClientMessage = (value: unknown): value is ClientMessage => {
     case 'timer.settings':
       return Boolean(message.durations && typeof message.durations === 'object')
         && typeof message.autoAdvance === 'boolean'
+        && Number.isSafeInteger(message.expectedRevision) && Number(message.expectedRevision) >= 0
+        && typeof message.expectedSessionId === 'string' && message.expectedSessionId.length > 0 && message.expectedSessionId.length <= 80;
+    case 'block.plan': {
+      if (!Number.isSafeInteger(message.expectedRevision) || Number(message.expectedRevision) < 0
+        || !message.plan || typeof message.plan !== 'object') return false;
+      const plan = message.plan as Record<string, unknown>;
+      return typeof plan.task === 'string' && plan.task.length <= 120
+        && typeof plan.finishLine === 'string' && plan.finishLine.length <= 160
+        && Array.isArray(plan.rightNow) && plan.rightNow.length <= 3
+        && plan.rightNow.every((item) => typeof item === 'string' && item.length <= 120);
+    }
+    case 'block.after':
+      return ['break', 'repeat', 'prepare'].includes(String(message.action))
         && Number.isSafeInteger(message.expectedRevision) && Number(message.expectedRevision) >= 0
         && typeof message.expectedSessionId === 'string' && message.expectedSessionId.length > 0 && message.expectedSessionId.length <= 80;
     case 'media.command': {

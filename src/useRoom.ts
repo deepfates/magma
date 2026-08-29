@@ -9,6 +9,7 @@ import type {Participant, Profile, RoomSnapshot, SessionArtifact, TimerProposal}
 import type {PorchMessage, PresenceChoice, RoomCueId, RoomSignal, SocialRelease} from './domain/porch';
 import type {RoomAdmission} from './accessClient';
 import {createScene, type PorchScene, type SceneCommand} from './domain/scene';
+import {createBlockState, type BlockPlanInput, type SharedBlockState} from './domain/block';
 
 export type Reaction = {id: string; emoji: string; from: string};
 
@@ -63,6 +64,7 @@ export const useRoom = (
   const [signals, setSignals] = useState<RoomSignal[]>([]);
   const [socialRelease, setSocialRelease] = useState<SocialRelease | null>(null);
   const [socialBloom, setSocialBloom] = useState<SocialRelease | null>(null);
+  const [block, setBlock] = useState<SharedBlockState>(createBlockState);
   const pendingPorchMessages = useRef(new Map<string, {text: string; resolve: (accepted: boolean) => void; timeoutId: number}>());
   const pendingInvitations = useRef(new Map<string, {resolve: (capability: string | null) => void; timeoutId: number}>());
   const seenReleases = useRef(new Set<string>());
@@ -104,6 +106,7 @@ export const useRoom = (
       setSignals([]);
       setSocialRelease(null);
       setSocialBloom(null);
+      setBlock(createBlockState());
       clearWorkspaceCache(room);
       return;
     }
@@ -143,6 +146,7 @@ export const useRoom = (
             setArtifacts(snapshot.artifacts);
             setPorchMessages(snapshot.porchMessages ?? []);
             setSocialRelease(snapshot.socialRelease ?? null);
+            setBlock(snapshot.block ?? createBlockState());
             if (snapshot.media) {
               setMedia(snapshot.media);
               setMediaReady(true);
@@ -285,6 +289,12 @@ export const useRoom = (
   const updateSettings = useCallback((durations: TimerDurations, autoAdvance: boolean) => send({
     type: 'timer.settings', durations, autoAdvance, expectedRevision: timer.revision, expectedSessionId: timer.sessionId,
   }), [send, timer.revision, timer.sessionId]);
+  const updateBlockPlan = useCallback((plan: BlockPlanInput) => send({
+    type: 'block.plan', plan, expectedRevision: block.revision,
+  }), [block.revision, send]);
+  const afterBlock = useCallback((action: 'break' | 'repeat' | 'prepare') => send({
+    type: 'block.after', action, expectedRevision: timer.revision, expectedSessionId: timer.sessionId,
+  }), [send, timer.revision, timer.sessionId]);
   const mediaCommand = useCallback((command: MediaCommand) => send({
     type: 'media.command', command, expectedRevision: media.revision, expectedItemId: mediaQueue.activeItemId,
   }), [media.revision, mediaQueue.activeItemId, send]);
@@ -333,6 +343,7 @@ export const useRoom = (
     signals,
     socialRelease,
     socialBloom,
+    block,
     profile: {...profile, memberId: sessionMemberId},
     role: admission?.role ?? 'member',
     workspaceWritable: connected,
@@ -346,6 +357,8 @@ export const useRoom = (
     createInvitation,
     updateProfile,
     updateSettings,
+    updateBlockPlan,
+    afterBlock,
     mediaCommand,
     sceneCommand,
     enqueueMedia,

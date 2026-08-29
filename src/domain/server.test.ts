@@ -329,7 +329,7 @@ describe('Magma room deadline and restart invariants', () => {
     const timer = await room.storage.get<TimerState>(TIMER_KEY);
     expect(timer).toMatchObject({status: 'running', revision: 1});
     expect(room.storage.alarm).toBe(timer?.endsAt);
-    expect(await room.storage.get(PORCH_MESSAGES_KEY)).toEqual([]);
+    expect((await room.storage.get<Array<{text: string}>>(PORCH_MESSAGES_KEY))?.map(({text}) => text)).toEqual(['Still gathering']);
   });
 
   it('retries a failed atomic completion without duplicate artifacts or events', async () => {
@@ -388,6 +388,62 @@ describe('Magma room deadline and restart invariants', () => {
     await send(server, guest, {type: 'timer.command', command: {type: 'pause'}, expectedRevision: 1});
     expect(latestSnapshot(room.broadcasts)?.proposal).toBeNull();
     expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({mode: 'focus', status: 'paused'});
+  });
+
+  it('persists each person’s disposable Block plan and keeps chat live during focus', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const ada = new FakeConnection('ada-tab');
+    const lin = new FakeConnection('lin-tab');
+    await connect(server, room, ada, profile('ada-member', 'Ada'));
+    await connect(server, room, lin, profile('lin-member', 'Lin'));
+
+    await send(server, ada, {type: 'block.plan', expectedRevision: 0, plan: {
+      task: 'Draft the note', finishLine: 'A readable first pass', rightNow: ['Open draft', 'Write lead'],
+    }});
+    expect(latestSnapshot(room.broadcasts)?.block.plans['ada-member']).toMatchObject({
+      task: 'Draft the note', finishLine: 'A readable first pass', rightNow: ['Open draft', 'Write lead'],
+    });
+    await send(server, lin, {type: 'block.plan', expectedRevision: 0, plan: {
+      task: 'Fix the sketch', finishLine: 'One clean shape', rightNow: [],
+    }});
+    await send(server, lin, {type: 'timer.command', command: {type: 'start'}, expectedRevision: 0});
+    room.broadcasts.length = 0;
+    await send(server, ada, {type: 'porch.message', nonce: 'during-focus-1', text: 'Tea is beside you'});
+    expect(room.broadcasts.some((message) => message.type === 'porch.message')).toBe(true);
+
+    const restarted = new MagmaRoom(room as never);
+    await restarted.onStart();
+    const returning = new FakeConnection('returning-tab');
+    await connect(restarted, room, returning, profile('other-member', 'Other'));
+    expect(latestSnapshot(returning.sent)?.block.plans).toMatchObject({
+      'ada-member': {task: 'Draft the note'}, 'lin-member': {task: 'Fix the sketch'},
+    });
+  });
+
+  it('can repeat a completed Block or return to a cleared next preparation', async () => {
+    const room = new FakeRoom();
+    await room.storage.put(TIMER_KEY, runningFocus());
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const host = new FakeConnection('host-tab');
+    await connect(server, room, host, profile('host-member', 'Host'));
+    await send(server, host, {type: 'block.plan', expectedRevision: 0, plan: {
+      task: 'Draft the note', finishLine: 'One clean pass', rightNow: ['Write'],
+    }});
+
+    vi.setSystemTime(31_000);
+    await server.onAlarm();
+    let timer = await room.storage.get<TimerState>(TIMER_KEY);
+    await send(server, host, {type: 'block.after', action: 'repeat', expectedRevision: timer!.revision, expectedSessionId: timer!.sessionId});
+    timer = await room.storage.get<TimerState>(TIMER_KEY);
+    expect(timer).toMatchObject({mode: 'focus', status: 'running'});
+    expect(latestSnapshot(room.broadcasts)?.block.plans['host-member']).toMatchObject({task: 'Draft the note'});
+
+    await send(server, host, {type: 'block.after', action: 'prepare', expectedRevision: timer!.revision, expectedSessionId: timer!.sessionId});
+    expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({mode: 'focus', status: 'idle'});
+    expect(latestSnapshot(room.broadcasts)?.block.plans['host-member']).toBeUndefined();
   });
 
   it('rejects stale settings instead of aborting the newly auto-started break', async () => {

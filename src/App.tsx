@@ -1,5 +1,5 @@
 import {lazy, Suspense, useEffect, useRef, useState} from 'react';
-import {Check, Copy, Eye, EyeOff, Hand, Map, MessageCircle, Pause, PenLine, Play, Plus, Radio, RotateCcw, StickyNote, Users, Volume2, VolumeX, X} from 'lucide-react';
+import {Check, Copy, Eye, EyeOff, Hand, Map, MessageCircle, Pause, PenLine, Play, Plus, Radio, RotateCcw, StickyNote, Target, Users, Volume2, VolumeX, X} from 'lucide-react';
 import {LavaShader} from './LavaShader';
 import {YouTubeBackdrop} from './YouTubeBackdrop';
 import {ArrivalVeil, type ArrivalState} from './ArrivalVeil';
@@ -14,6 +14,7 @@ import {useYouTubeBackdrop} from './useYouTubeBackdrop';
 import {DAYLIGHT_OVERLAY, KEXP_RADIO} from './domain/scene';
 import {RadioLayer, WorldOverlays} from './SceneLayers';
 import {useScenePreferences} from './useScenePreferences';
+import {BlockInstrument} from './BlockInstrument';
 
 const PorchCanvas = lazy(() => import('./PorchCanvas').then((module) => ({default: module.PorchCanvas})));
 
@@ -52,6 +53,7 @@ export default function App() {
   const [glassVisible, setGlassVisible] = useState(true);
   const [tunerOpen, setTunerOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [blockOpen, setBlockOpen] = useState(false);
   const [draftSource, setDraftSource] = useState('');
   const [sourceStatus, setSourceStatus] = useState('');
   const [justCreated, setJustCreated] = useState(false);
@@ -104,7 +106,7 @@ export default function App() {
   const porchAdmitted = legacyAccess || (access.session.kind === 'admitted' && !justCreated);
 
   return <>
-    <main className={`porch-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''}`} ref={backgroundRef} data-arrival-background>
+    <main className={`porch-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''} ${session.timer.mode === 'focus' && session.timer.status === 'running' ? 'block-running' : ''}`} ref={backgroundRef} data-arrival-background>
       <section className="porch-world" aria-label="The shared window">
         <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canShare={session.connected} muted={backdrop.muted} />
         {(!backdrop.enabled || backdrop.reducedSensory) && <div className="porch-glow">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 0.8 : 0.25} presence={session.participants.length} pulse={0} phase={0} />}<span>{backdrop.reducedSensory ? 'Quiet' : 'Glow'}</span></div>}
@@ -115,10 +117,14 @@ export default function App() {
       {porchAdmitted && <Suspense fallback={<div className="porch-canvas-status">Opening the glass…</div>}>
         <PorchCanvas room={room} profile={session.profile} refreshAdmission={protectedAccess?.refreshAdmission} glassVisible={glassVisible} tool={tool} />
       </Suspense>}
-      <section className="porch-fixed-clock" aria-label="Shared clock">
+      <section className="porch-fixed-clock" aria-label="Shared clock" onDoubleClick={() => setBlockOpen(true)}>
         <small>shared clock</small><strong>{formatRemaining(remaining)}</strong>
         <div><button onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})}>{session.timer.status === 'running' ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}{session.timer.status === 'running' ? 'Pause' : 'Start'}</button><button onClick={() => session.command({type: 'reset'})} aria-label="Reset shared clock"><RotateCcw size={14} /></button></div>
       </section>
+
+      <BlockInstrument open={blockOpen} block={session.block} profile={session.profile} timer={session.timer} completion={session.completion}
+        onClose={() => setBlockOpen(false)} onSave={(plan) => { session.updateProfile({intention: plan.task}); session.updateBlockPlan(plan); }}
+        onStart={() => { session.command({type: 'start'}); setBlockOpen(false); }} onAfter={session.afterBlock} onDismissCompletion={session.dismissCompletion} />
 
       <header className="porch-header">
         <button className="porch-place" onClick={() => { setTunerOpen((open) => !open); setPeopleOpen(false); }} aria-expanded={tunerOpen}>
@@ -149,7 +155,7 @@ export default function App() {
 
       {peopleOpen && <aside className="porch-sidecar" aria-label="People and conversation">
         <div className="sidecar-heading"><div><small>ON THE PORCH</small><h2>{session.participants.length} {session.participants.length === 1 ? 'person' : 'people'}</h2></div><button onClick={() => setPeopleOpen(false)} aria-label="Close people"><X size={18} /></button></div>
-        <div className="porch-people">{session.participants.map((person) => <div key={person.memberId}><span style={{'--person-color': person.color} as React.CSSProperties}>{person.emoji}</span><p><strong>{person.name}{person.memberId === session.profile.memberId ? ' · you' : ''}</strong><small>{person.intention || 'here now'}</small></p></div>)}</div>
+        <div className="porch-people">{session.participants.map((person) => <div key={person.memberId}><span style={{'--person-color': person.color} as React.CSSProperties}>{person.emoji}</span><p><strong>{person.name}{person.memberId === session.profile.memberId ? ' · you' : ''}</strong><small>{session.block.plans[person.memberId]?.task || person.intention || 'here now'}</small></p></div>)}</div>
         <Porch messages={session.porchMessages} floor={false} connected={session.connected} release={session.socialRelease} onSend={session.sendPorchMessage} />
         {invitationPayload && <label className="porch-share-copy">Invite<textarea readOnly value={invitationPayload} onFocus={(event) => event.currentTarget.select()} /></label>}
       </aside>}
@@ -157,6 +163,7 @@ export default function App() {
       <nav className="porch-tools" aria-label="Things to use on the porch">
         {([{id: 'select', label: 'Move', icon: <Hand size={19} />}, {id: 'draw', label: 'Draw', icon: <PenLine size={19} />}, {id: 'note', label: 'Note', icon: <StickyNote size={19} />} ] as const).map((item) => <button key={item.id} className={tool === item.id ? 'active' : ''} aria-pressed={tool === item.id} onClick={() => setTool(item.id)}>{item.icon}<span>{item.label}</span></button>)}
         <button onClick={() => { setPeopleOpen(true); setTunerOpen(false); }}><MessageCircle size={19} /><span>Talk</span></button>
+        <button className={blockOpen ? 'active' : ''} onClick={() => { setBlockOpen((open) => !open); setPeopleOpen(false); setTunerOpen(false); }}><Target size={19} /><span>Block</span></button>
       </nav>
       <div className="porch-connection"><span className={session.connected ? 'online' : ''} />{session.connected ? 'together' : 'reconnecting'}</div>
       <div className="room-live" aria-live="polite">{session.notice}</div>

@@ -151,6 +151,35 @@ test('everyone can tune the shared window while glass and sound remain personal'
   await Promise.all([firstContext.close(), secondContext.close()]);
 });
 
+test('two people can prepare a Block and keep talking while the shared clock runs', async ({browser}) => {
+  const room = `block-${crypto.randomUUID()}`;
+  const firstContext = await browser.newContext();
+  const secondContext = await browser.newContext();
+  await Promise.all([blockRemoteMedia(firstContext), blockRemoteMedia(secondContext)]);
+  const first = await firstContext.newPage();
+  const second = await secondContext.newPage();
+  await first.goto(`/?room=${room}`);
+  await second.goto(`/?room=${room}`);
+
+  await first.getByRole('button', {name: 'Block', exact: true}).click();
+  await first.getByLabel('One thing').fill('Draft the opening');
+  await first.getByLabel('Finish line').fill('A readable first pass');
+  await first.getByLabel('Right Now 1').fill('Write the first paragraph');
+  await first.getByRole('button', {name: /Start 25 minutes/}).click();
+  await expect(second.locator('.porch-fixed-clock').getByRole('button', {name: 'Pause'})).toBeVisible();
+
+  await second.getByRole('button', {name: 'Block', exact: true}).click();
+  await expect(second.getByText('Draft the opening', {exact: true})).toBeVisible();
+  await second.getByRole('button', {name: 'Close Block'}).click();
+  await second.getByRole('button', {name: 'Talk', exact: true}).click();
+  await second.getByLabel('Write to the room').fill('I am here with you');
+  await second.getByRole('button', {name: 'Send', exact: true}).click();
+  await first.getByRole('button', {name: /2 here/}).click();
+  await expect(first.getByRole('log', {name: 'Room messages'})).toContainText('I am here with you');
+
+  await Promise.all([firstContext.close(), secondContext.close()]);
+});
+
 test('one person can keep the porch open in two tabs without losing their messages', async ({browser}) => {
   const room = `tabs-${crypto.randomUUID()}`;
   const context = await browser.newContext();
