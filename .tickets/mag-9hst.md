@@ -1,6 +1,6 @@
 ---
 id: mag-9hst
-status: open
+status: in_progress
 deps: [mag-p7ef]
 links: []
 created: 2026-08-29T10:41:36Z

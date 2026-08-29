@@ -1,6 +1,6 @@
 ---
 id: mag-6nb5
-status: open
+status: in_progress
 deps: [mag-if4i]
 links: []
 created: 2026-08-29T10:42:12Z
