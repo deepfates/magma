@@ -22,6 +22,8 @@ The small product grammar is:
 
 Porch is not a productivity-suite dashboard and it is not a reskinned generic whiteboard. The product owns this grammar and the restrained one-screen composition. Specialist libraries own the difficult mechanics underneath it.
 
+The complete requested product space, current capability boundary, and dependency-shaped delivery program live in [PRODUCT.md](PRODUCT.md). This repository owns a local `.tickets` ledger for executable status; use `tk ready` and `tk blocked` here. The product map owns meaning, while tickets record work rather than redefining it.
+
 ## Implemented now
 
 - A full-window Treasure Island view by default, with curated Bay and NASA sources, arbitrary YouTube videos/playlists, native WebGL Glow, and Quiet.
