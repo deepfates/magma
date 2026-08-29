@@ -5,6 +5,13 @@ import type {Participant, Profile, RoomSnapshot, SessionArtifact} from './protoc
 import type {SocialRelease} from './porch';
 import type {MediaQueueState} from './mediaQueue';
 import type {RoomMediaState} from './media';
+import {
+  ROOM_STATE_BACKUP_KEY,
+  ROOM_STATE_KEY,
+  UnsupportedRoomStateVersionError,
+  type LegacyRoomStateBackup,
+  type StoredRoomState,
+} from './roomState';
 import {createMergeableStore} from 'tinybase';
 import {contentAsChanges, decodeWorkspaceSnapshot, encodeWorkspaceChanges} from '../workspaceTransport';
 
@@ -143,6 +150,87 @@ const runningFocus = (sessionId = 'focus-session'): TimerState => {
 const latestSnapshot = (messages: Array<Record<string, unknown>>) =>
   [...messages].reverse().find((message) => message.type === 'snapshot') as RoomSnapshot | undefined;
 
+describe('versioned authoritative room storage', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  const legacyMessage = {
+    id: 'legacy-message-1',
+    text: 'Meet here tomorrow',
+    authorId: 'legacy-member',
+    authorName: 'Legacy',
+    authorEmoji: '🌉',
+    createdAt: 900,
+    sessionId: 'legacy-session',
+  };
+
+  it('atomically migrates representative production keys and keeps the prior snapshot recoverable', async () => {
+    const room = new FakeRoom();
+    const legacyTimer = {...createTimer('legacy-session'), status: 'paused' as const, remainingMs: 420_000, revision: 7};
+    await room.storage.put({
+      [TIMER_KEY]: legacyTimer,
+      [PORCH_MESSAGES_KEY]: [legacyMessage],
+      [MEDIA_KEY]: {
+        source: {kind: 'live', id: 'BSWhGNXxT9A', label: 'Old production label'},
+        status: 'playing', positionSeconds: 0, playlistIndex: 0, changedAt: 900, revision: 3, controllerId: 'legacy-member',
+      },
+    });
+
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+
+    const envelope = await room.storage.get<StoredRoomState>(ROOM_STATE_KEY);
+    const backup = await room.storage.get<LegacyRoomStateBackup>(ROOM_STATE_BACKUP_KEY);
+    expect(envelope).toMatchObject({version: 1, values: {timer: {sessionId: 'legacy-session', revision: 7}}});
+    expect((envelope?.values.porchMessages as Array<{text: string}>)[0].text).toBe('Meet here tomorrow');
+    expect(backup).toEqual({
+      version: 1,
+      source: 'production-keys',
+      capturedAt: 1_000,
+      values: {
+        timer: legacyTimer,
+        media: {
+          source: {kind: 'live', id: 'BSWhGNXxT9A', label: 'Old production label'},
+          status: 'playing', positionSeconds: 0, playlistIndex: 0, changedAt: 900, revision: 3, controllerId: 'legacy-member',
+        },
+        porchMessages: [legacyMessage],
+      },
+    });
+    expect(await room.storage.get(TIMER_KEY)).toEqual(legacyTimer);
+
+    const firstBackup = structuredClone(backup);
+    const restarted = new MagmaRoom(room as never);
+    await restarted.onStart();
+    expect(await room.storage.get(ROOM_STATE_BACKUP_KEY)).toEqual(firstBackup);
+  });
+
+  it('leaves production keys untouched when the atomic migration persistence fails', async () => {
+    const room = new FakeRoom();
+    const legacyTimer = {...createTimer('recoverable-session'), status: 'paused' as const, revision: 4};
+    await room.storage.put(TIMER_KEY, legacyTimer);
+    room.storage.failNextAtomicWrite = true;
+
+    await expect(new MagmaRoom(room as never).onStart()).rejects.toThrow('injected atomic write failure');
+    expect(await room.storage.get(TIMER_KEY)).toEqual(legacyTimer);
+    expect(await room.storage.get(ROOM_STATE_KEY)).toBeUndefined();
+    expect(await room.storage.get(ROOM_STATE_BACKUP_KEY)).toBeUndefined();
+  });
+
+  it('fails visibly on a future envelope without writing or normalizing any stored key', async () => {
+    const room = new FakeRoom();
+    const future = {version: 99, persistedAt: 900, values: {timer: {future: true}}, futureField: 'retain me'};
+    await room.storage.put(ROOM_STATE_KEY, future);
+    const before = structuredClone([...room.storage.values.entries()]);
+
+    await expect(new MagmaRoom(room as never).onStart()).rejects.toBeInstanceOf(UnsupportedRoomStateVersionError);
+    expect([...room.storage.values.entries()]).toEqual(before);
+  });
+});
+
 describe('Magma room deadline and restart invariants', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -213,6 +301,10 @@ describe('Magma room deadline and restart invariants', () => {
     expect(await room.storage.get(SOCIAL_NONCES_KEY)).toEqual(['retry-nonce-1']);
     expect((await room.storage.get<Array<{text: string}>>(PORCH_MESSAGES_KEY))?.map(({text}) => text))
       .toEqual(['Please survive retry']);
+    expect((await room.storage.get<StoredRoomState>(ROOM_STATE_KEY))?.values).toMatchObject({
+      socialNonces: ['retry-nonce-1'],
+      porchMessages: [{text: 'Please survive retry'}],
+    });
     expect(host.sent.filter((entry) => entry.type === 'porch.accepted')).toHaveLength(2);
   });
 

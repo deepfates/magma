@@ -4,13 +4,14 @@ import {
   normalizePublicJwk, parseInviteCapability, verifyAuthProof,
   type AuthChallenge, type AuthMembership, type AuthProofAction, type AuthRole, type InvitationRecord,
 } from '../src/domain/auth';
+import {ROOM_STATE_KEY} from '../src/domain/roomState';
 
 export const ACCESS_STATE_KEY = 'magma:access:v1';
 export const INTERNAL_ADMISSION_PATH = '/__magma/access/admit';
 export const TRUSTED_MEMBER_HEADER = 'x-magma-member-id';
 export const TRUSTED_DEVICE_HEADER = 'x-magma-device-id';
 export const TRUSTED_ROLE_HEADER = 'x-magma-member-role';
-const CANONICAL_ROOM_KEYS = ['magma:timer', 'magma:artifacts', 'magma:media', 'magma:workspace:v2', 'hasStore'] as const;
+const CANONICAL_ROOM_KEYS = [ROOM_STATE_KEY, 'magma:timer', 'magma:artifacts', 'magma:media', 'magma:workspace:v2', 'hasStore'] as const;
 const CHALLENGE_TTL_MS = 60_000;
 const TICKET_TTL_MS = 30_000;
 const MAX_MEMBERS = 64;

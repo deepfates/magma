@@ -5,6 +5,7 @@ import {
   handleInternalAdmission, validateAdmissionBeforeConnect,
   type AccessRuntime, type AccessStorage, type DurableAccessState,
 } from '../../party/access';
+import {ROOM_STATE_KEY} from './roomState';
 import {
   deriveDeviceId, exportPublicJwk, generateSigningKeyPair, hashInviteCapability, signAuthProof,
   type AuthChallenge, type AuthProofAction,
@@ -99,6 +100,9 @@ describe('server-side room admission', () => {
     const currentWorkspace = new FakeStorage();
     await currentWorkspace.put('magma:workspace:v2', [{tasks: {}}, 1]);
     expect(await new RoomAccessController(currentWorkspace, ROOM_ID).classify()).toBe('legacy-open');
+    const versionedRoom = new FakeStorage();
+    await versionedRoom.put(ROOM_STATE_KEY, {version: 1, persistedAt: 1, values: {}});
+    expect(await new RoomAccessController(versionedRoom, ROOM_ID).classify()).toBe('legacy-open');
     expect(await new RoomAccessController(new FakeStorage(), ROOM_ID).classify()).toBe('unclaimed');
     expect(await new RoomAccessController(new FakeStorage(), 'friendly-public-room').classify()).toBe('legacy-open');
   });

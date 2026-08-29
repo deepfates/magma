@@ -15,6 +15,18 @@ import {
   MAX_HELD_SIGNALS, MAX_PORCH_MESSAGES, createPorchMessage, isFloor, normalizeHeldSignals, normalizePorchMessages,
   normalizeSocialRelease, ROOM_CUES, type PorchMessage, type PresenceChoice, type RoomCueId, type RoomSignal, type SocialReaction, type SocialRelease,
 } from '../src/domain/porch';
+import {
+  LEGACY_ROOM_KEYS,
+  ROOM_STATE_BACKUP_KEY,
+  ROOM_STATE_KEY,
+  legacyEntries,
+  migrateRoomState,
+  updateStoredRoomState,
+  type LegacyRoomStateValues,
+  type RoomStateField,
+  type RoomStateValues,
+  type StoredRoomState,
+} from '../src/domain/roomState';
 import type {AuthRole} from '../src/domain/auth';
 import {
   decodeWorkspaceChanges, encodeWorkspaceChanges, encodeWorkspaceSnapshot, hasWorkspaceChanges, MAX_WORKSPACE_MESSAGE_BYTES,
@@ -56,20 +68,6 @@ type ClockSocialState = {
 };
 type QueueReceipt = {memberId: string; opId: string; fingerprint: string; revision: number; outcome: string};
 
-const TIMER_KEY = 'magma:timer';
-const ARTIFACTS_KEY = 'magma:artifacts';
-const PHASE_PARTICIPANTS_KEY = 'magma:phase-participants';
-const REACTION_COUNT_KEY = 'magma:reaction-count';
-const MEDIA_KEY = 'magma:media';
-const MEDIA_QUEUE_KEY = 'magma:media-queue:v1';
-const MEDIA_QUEUE_RECEIPTS_KEY = 'magma:media-queue-receipts:v1';
-const PORCH_MESSAGES_KEY = 'magma:porch-messages';
-const HELD_SIGNALS_KEY = 'magma:held-signals';
-const HELD_REACTIONS_KEY = 'magma:held-reactions';
-const SOCIAL_NONCES_KEY = 'magma:social-nonces';
-const SOCIAL_RELEASE_KEY = 'magma:social-release';
-const SIGNAL_COUNTS_KEY = 'magma:signal-counts';
-const REACTION_COUNTS_KEY = 'magma:reaction-counts';
 const ALLOWED_TABLES = new Set(['tasks', 'sparks']);
 const ALLOWED_REACTIONS = new Set(['🔥', '✨', '🫡', '💧']);
 const ALLOWED_CELLS: Record<string, Set<string>> = {
@@ -80,7 +78,6 @@ const MAX_MESSAGE_BYTES = 4_096;
 const MAX_HELD_REACTIONS = 32;
 const MAX_SOCIAL_NONCES = 128;
 const MAX_MEDIA_QUEUE_RECEIPTS = 128;
-const WORKSPACE_KEY = 'magma:workspace:v2';
 const MAX_WORKSPACE_ROWS_PER_TABLE = 256;
 const WORKSPACE_SCHEMA = {
   tasks: {
@@ -186,6 +183,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   private readonly access: RoomAccessController;
   private readonly workspace = createWorkspaceStore();
   private workspaceQueue: Promise<void> = Promise.resolve();
+  private storedRoomState: StoredRoomState = migrateRoomState(undefined, {}, Date.now()).state;
 
   constructor(readonly room: Party.Room) {
     super(room);
@@ -194,13 +192,16 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   }
 
   async onStart() {
-    this.timer = normalizeTimer(await this.room.storage.get<TimerState>(TIMER_KEY));
-    this.artifacts = (await this.room.storage.get<SessionArtifact[]>(ARTIFACTS_KEY)) ?? [];
-    this.phaseParticipants = (await this.room.storage.get<SessionArtifact['participants']>(PHASE_PARTICIPANTS_KEY)) ?? [];
-    this.reactionCount = this.normalizeReactionCount(await this.room.storage.get(REACTION_COUNT_KEY));
-    this.media = normalizeMediaState(await this.room.storage.get<RoomMediaState>(MEDIA_KEY));
+    const classification = await this.access.classify();
+    await this.loadRoomState(classification !== 'unclaimed');
+    const stored = this.storedRoomState.values;
+    this.timer = normalizeTimer(stored.timer as TimerState | undefined);
+    this.artifacts = (stored.artifacts as SessionArtifact[] | undefined) ?? [];
+    this.phaseParticipants = (stored.phaseParticipants as SessionArtifact['participants'] | undefined) ?? [];
+    this.reactionCount = this.normalizeReactionCount(stored.reactionCount);
+    this.media = normalizeMediaState(stored.media as RoomMediaState | undefined);
     this.media = {...this.media, source: this.canonicalSource(this.media.source)};
-    const storedQueue = await this.room.storage.get<MediaQueueState>(MEDIA_QUEUE_KEY);
+    const storedQueue = stored.mediaQueue as MediaQueueState | undefined;
     this.listeningQueue = normalizeMediaQueue(storedQueue, this.media.source, this.media.changedAt);
     const activeItem = activeQueueItem(this.listeningQueue);
     if (activeItem.source.kind !== this.media.source.kind || activeItem.source.id !== this.media.source.id) {
@@ -211,22 +212,27 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
           : item),
       };
     }
-    this.mediaQueueReceipts = this.normalizeQueueReceipts(await this.room.storage.get(MEDIA_QUEUE_RECEIPTS_KEY));
-    if (await this.access.classify() !== 'unclaimed') {
-      await this.room.storage.put({[MEDIA_KEY]: this.media, [MEDIA_QUEUE_KEY]: this.listeningQueue});
-    }
-    this.porchMessages = normalizePorchMessages(await this.room.storage.get(PORCH_MESSAGES_KEY));
-    this.heldSignals = normalizeHeldSignals(await this.room.storage.get(HELD_SIGNALS_KEY));
-    this.heldReactions = this.normalizeHeldReactions(await this.room.storage.get(HELD_REACTIONS_KEY));
-    this.socialNonces = this.normalizeSocialNonces(await this.room.storage.get(SOCIAL_NONCES_KEY));
-    this.socialRelease = normalizeSocialRelease(await this.room.storage.get(SOCIAL_RELEASE_KEY));
-    this.signalCounts = this.normalizeSignalCounts(await this.room.storage.get(SIGNAL_COUNTS_KEY));
-    this.reactionCounts = this.normalizeReactionCounts(await this.room.storage.get(REACTION_COUNTS_KEY));
-    const workspace = await this.room.storage.get<MergeableContent>(WORKSPACE_KEY);
+    this.mediaQueueReceipts = this.normalizeQueueReceipts(stored.mediaQueueReceipts);
+    this.porchMessages = normalizePorchMessages(stored.porchMessages);
+    this.heldSignals = normalizeHeldSignals(stored.heldSignals);
+    this.heldReactions = this.normalizeHeldReactions(stored.heldReactions);
+    this.socialNonces = this.normalizeSocialNonces(stored.socialNonces);
+    this.socialRelease = normalizeSocialRelease(stored.socialRelease);
+    this.signalCounts = this.normalizeSignalCounts(stored.signalCounts);
+    this.reactionCounts = this.normalizeReactionCounts(stored.reactionCounts);
+    const workspace = stored.workspace as MergeableContent | undefined;
+    let migratedTinyBaseWorkspace = false;
     if (workspace) this.workspace.applyMergeableChanges(workspace);
     else if (await hasStoreInStorage(this.room.storage)) {
       this.workspace.setContent(await loadStoreFromStorage(this.room.storage));
-      await this.room.storage.put(WORKSPACE_KEY, this.workspace.getMergeableContent());
+      migratedTinyBaseWorkspace = true;
+    }
+    if (classification !== 'unclaimed') {
+      await this.persistEnvelopeOnly(this.currentStoredValues());
+      // Keep the two production keys that the previous server eagerly
+      // canonicalized so a rollback reads the same active source and queue.
+      await this.persistRoomState({media: this.media, mediaQueue: this.listeningQueue});
+      if (migratedTinyBaseWorkspace) await this.persistRoomState({workspace: this.workspace.getMergeableContent()});
     }
     await this.settleTimer('server');
     await this.scheduleAlarm();
@@ -390,10 +396,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         if (isFloor(this.timer)) {
           const reactionCount = Math.min(10_000, this.reactionCount + 1);
           const reactionCounts = {...this.reactionCounts, [reaction.emoji]: Math.min(10_000, (this.reactionCounts[reaction.emoji] ?? 0) + 1)};
-          await this.putAtomic({
-            [REACTION_COUNT_KEY]: reactionCount,
-            [REACTION_COUNTS_KEY]: reactionCounts,
-          });
+          await this.persistRoomState({reactionCount, reactionCounts});
           this.reactionCount = reactionCount;
           this.reactionCounts = reactionCounts;
         } else {
@@ -427,7 +430,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         }
         const porchMessages = [...this.porchMessages, porchMessage].slice(-MAX_PORCH_MESSAGES);
         const socialNonces = [...this.socialNonces, parsed.nonce].slice(-MAX_SOCIAL_NONCES);
-        await this.putAtomic({[PORCH_MESSAGES_KEY]: porchMessages, [SOCIAL_NONCES_KEY]: socialNonces});
+        await this.persistRoomState({porchMessages, socialNonces});
         this.porchMessages = porchMessages;
         this.socialNonces = socialNonces;
         connection.send(JSON.stringify({type: 'porch.accepted', nonce: parsed.nonce, message: porchMessage}));
@@ -448,13 +451,10 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         const socialNonces = [...this.socialNonces, parsed.nonce].slice(-MAX_SOCIAL_NONCES);
         if (isFloor(this.timer)) {
           const signalCounts = {...this.signalCounts, [signal.cueId]: Math.min(MAX_HELD_SIGNALS, (this.signalCounts[signal.cueId] ?? 0) + 1)};
-          await this.putAtomic({
-            [SIGNAL_COUNTS_KEY]: signalCounts,
-            [SOCIAL_NONCES_KEY]: socialNonces,
-          });
+          await this.persistRoomState({signalCounts, socialNonces});
           this.signalCounts = signalCounts;
         } else {
-          await this.room.storage.put(SOCIAL_NONCES_KEY, socialNonces);
+          await this.persistRoomState({socialNonces});
           this.room.broadcast(JSON.stringify({type: 'social.signal', signal}));
         }
         this.socialNonces = socialNonces;
@@ -476,7 +476,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
           return;
         }
         const next = applyMediaCommand(this.media, parsed.command, Date.now(), participant.memberId);
-        await this.room.storage.put(MEDIA_KEY, next);
+        await this.persistRoomState({media: next});
         this.media = next;
         this.broadcastSnapshot();
       });
@@ -563,7 +563,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
         const receipts = [...this.mediaQueueReceipts, {
           memberId: participant.memberId, opId: command.opId, fingerprint, revision: next.revision, outcome,
         }].slice(-MAX_MEDIA_QUEUE_RECEIPTS);
-        await this.putAtomic({[MEDIA_QUEUE_KEY]: next, [MEDIA_KEY]: nextMedia, [MEDIA_QUEUE_RECEIPTS_KEY]: receipts});
+        await this.persistRoomState({mediaQueue: next, media: nextMedia, mediaQueueReceipts: receipts});
         this.listeningQueue = next;
         this.media = nextMedia;
         this.mediaQueueReceipts = receipts;
@@ -814,30 +814,107 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     return true;
   }
 
-  private async putAtomic(entries: Record<string, unknown>) {
-    await this.room.storage.put(entries);
+  private currentStoredValues(): RoomStateValues {
+    return {
+      timer: this.timer,
+      artifacts: this.artifacts,
+      phaseParticipants: this.phaseParticipants,
+      reactionCount: this.reactionCount,
+      media: this.media,
+      mediaQueue: this.listeningQueue,
+      mediaQueueReceipts: this.mediaQueueReceipts,
+      porchMessages: this.porchMessages,
+      heldSignals: this.heldSignals,
+      heldReactions: this.heldReactions,
+      socialNonces: this.socialNonces,
+      socialRelease: this.socialRelease,
+      signalCounts: this.signalCounts,
+      reactionCounts: this.reactionCounts,
+      workspace: this.workspace.getMergeableContent(),
+    };
+  }
+
+  private async loadRoomState(persistMigration: boolean) {
+    const stored = await this.room.storage.get(ROOM_STATE_KEY);
+    const legacyValues: LegacyRoomStateValues = {};
+    if (stored === undefined) {
+      for (const [field, key] of Object.entries(LEGACY_ROOM_KEYS) as Array<[RoomStateField, string]>) {
+        const value = await this.room.storage.get(key);
+        if (value !== undefined) legacyValues[field] = value;
+      }
+    }
+    const migration = migrateRoomState(stored, legacyValues, Date.now());
+    if (!migration.migrated || !persistMigration) {
+      this.storedRoomState = migration.state;
+      return;
+    }
+    let committed = migration.state;
+    await this.room.storage.transaction(async (transaction) => {
+      const current = await transaction.get(ROOM_STATE_KEY);
+      const checked = migrateRoomState(current, legacyValues, migration.state.persistedAt);
+      if (!checked.migrated) {
+        committed = checked.state;
+        return;
+      }
+      await transaction.put({
+        [ROOM_STATE_BACKUP_KEY]: checked.backup!,
+        [ROOM_STATE_KEY]: checked.state,
+      });
+      committed = checked.state;
+    });
+    this.storedRoomState = committed;
+  }
+
+  private async persistRoomState(
+    patch: RoomStateValues,
+    alarm: {type: 'set'; at: number} | {type: 'delete'} | null = null,
+  ) {
+    let committed: StoredRoomState | null = null;
+    await this.room.storage.transaction(async (transaction) => {
+      const stored = await transaction.get(ROOM_STATE_KEY);
+      const base = stored === undefined
+        ? this.storedRoomState
+        : migrateRoomState(stored, {}, Date.now()).state;
+      const next = updateStoredRoomState(base, patch, Date.now());
+      await transaction.put({...legacyEntries(patch), [ROOM_STATE_KEY]: next});
+      if (alarm?.type === 'set') await transaction.setAlarm(alarm.at);
+      else if (alarm?.type === 'delete') await transaction.deleteAlarm();
+      committed = next;
+    });
+    this.storedRoomState = committed!;
+  }
+
+  private async persistEnvelopeOnly(patch: RoomStateValues) {
+    let committed: StoredRoomState | null = null;
+    await this.room.storage.transaction(async (transaction) => {
+      const stored = await transaction.get(ROOM_STATE_KEY);
+      const base = stored === undefined
+        ? this.storedRoomState
+        : migrateRoomState(stored, {}, Date.now()).state;
+      const next = updateStoredRoomState(base, patch, Date.now());
+      await transaction.put(ROOM_STATE_KEY, next);
+      committed = next;
+    });
+    this.storedRoomState = committed!;
   }
 
   private async commitClockAndSocial(state: ClockSocialState) {
-    const entries: Record<string, unknown> = {
-      [TIMER_KEY]: state.timer,
-      [ARTIFACTS_KEY]: state.artifacts,
-      [PHASE_PARTICIPANTS_KEY]: state.phaseParticipants,
-      [PORCH_MESSAGES_KEY]: state.porchMessages,
-      [HELD_SIGNALS_KEY]: state.heldSignals,
-      [HELD_REACTIONS_KEY]: state.heldReactions,
-      [REACTION_COUNT_KEY]: state.reactionCount,
-      [SIGNAL_COUNTS_KEY]: state.signalCounts,
-      [REACTION_COUNTS_KEY]: state.reactionCounts,
-      [SOCIAL_RELEASE_KEY]: state.socialRelease,
-      [MEDIA_KEY]: state.media,
-      [MEDIA_QUEUE_KEY]: state.mediaQueue,
-    };
-    await this.room.storage.transaction(async (transaction) => {
-      await transaction.put(entries);
-      if (state.timer.status === 'running' && state.timer.endsAt !== null) await transaction.setAlarm(state.timer.endsAt);
-      else await transaction.deleteAlarm();
-    });
+    await this.persistRoomState({
+      timer: state.timer,
+      artifacts: state.artifacts,
+      phaseParticipants: state.phaseParticipants,
+      porchMessages: state.porchMessages,
+      heldSignals: state.heldSignals,
+      heldReactions: state.heldReactions,
+      reactionCount: state.reactionCount,
+      signalCounts: state.signalCounts,
+      reactionCounts: state.reactionCounts,
+      socialRelease: state.socialRelease,
+      media: state.media,
+      mediaQueue: state.mediaQueue,
+    }, state.timer.status === 'running' && state.timer.endsAt !== null
+      ? {type: 'set', at: state.timer.endsAt}
+      : {type: 'delete'});
   }
 
   private stateForTimerTransition(wasFloor: boolean, timer: TimerState, phaseParticipants: SessionArtifact['participants']): ClockSocialState {
@@ -892,7 +969,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   private async rememberPhaseParticipant(profile: Profile) {
     if (this.phaseParticipants.some((participant) => participant.memberId === profile.memberId)) return;
     const phaseParticipants = [...this.phaseParticipants, {...profile}];
-    await this.room.storage.put(PHASE_PARTICIPANTS_KEY, phaseParticipants);
+    await this.persistRoomState({phaseParticipants});
     this.phaseParticipants = phaseParticipants;
   }
 
@@ -1085,11 +1162,11 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   }
 
   private async ensureWorkspaceStore() {
-    if (await this.room.storage.get<MergeableContent>(WORKSPACE_KEY)) return;
+    if (this.storedRoomState.values.workspace !== undefined) return;
     if (await hasStoreInStorage(this.room.storage) && this.workspace.getTableIds().length === 0) {
       this.workspace.setContent(await loadStoreFromStorage(this.room.storage));
     }
-    await this.room.storage.put(WORKSPACE_KEY, this.workspace.getMergeableContent());
+    await this.persistRoomState({workspace: this.workspace.getMergeableContent()});
   }
 
   private validWorkspace(workspace: MergeableStore) {
@@ -1206,7 +1283,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     this.workspace.setContent(content);
     this.workspace.delListener(listener);
     if (!hasWorkspaceChanges(accepted)) return;
-    await this.room.storage.put(WORKSPACE_KEY, this.workspace.getMergeableContent());
+    await this.persistRoomState({workspace: this.workspace.getMergeableContent()});
     this.room.broadcast(encodeWorkspaceChanges(accepted));
   }
 }
