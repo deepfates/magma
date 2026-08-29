@@ -1,6 +1,7 @@
 import type {PhaseCompletion, TimerCommand, TimerDurations, TimerState} from './timer';
 import type {MediaCommand, RoomMediaState} from './media';
 import {ROOM_CUES, type PorchMessage, type PresenceChoice, type RoomCueId, type SocialRelease} from './porch';
+import type {AuthRole} from './auth';
 
 export type Profile = {
   memberId: string;
@@ -15,6 +16,7 @@ export type Participant = Profile & {
   joinedAt: number;
   connections: number;
   presence: PresenceChoice;
+  role: AuthRole;
 };
 
 export type TimerProposal = {

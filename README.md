@@ -74,7 +74,9 @@ Magma 1.0 is not video chat, a public community-discovery network, a creator bro
 
 ## What is real
 
-- A room is named by `?room=...`; the Invite button copies the join link.
+- Opening Magma without a room creates a high-entropy private room locus. The first device claims it with a non-extractable, room-scoped P-256 key stored in IndexedDB; returning admission proves that key rather than trusting an editable profile or browser URL.
+- Owners and stewards can create role-scoped, expiring invitation capabilities. The room address and invitation code remain separate, rotation is atomic, and owners can revoke a member across all connected tabs. Revocation stops shared media, clears visible room state, and removes that room's local workspace cache.
+- The PartyKit worker enforces admission before the WebSocket reaches room code, strips client-supplied trusted headers, issues a fresh 30-second one-use ticket for every reconnect, and rechecks durable membership before revealing snapshots. Existing named rooms remain legacy-open instead of being silently claimed.
 - PartyKit owns the canonical timer state. Server alarms settle elapsed phases exactly once; clients derive the display from a sampled server-time offset instead of broadcasting every second.
 - PartyKit separately owns the canonical room-media state: source, playback intent, position anchor, playlist index, controller, and revision. The YouTube IFrame API projects that state locally and corrects material VOD drift without feeding remote corrections back into the room.
 - The first member present holds timer authority across all of their tabs. Everyone else can propose a timer change; the host can approve it or pass the crown, and host loss triggers a deterministic handoff. Shared media is democratic: every connected participant can steer it.
@@ -83,7 +85,7 @@ Magma 1.0 is not video chat, a public community-discovery network, a creator bro
 - The Room surface now has the first Porch loop: explicit Here/Ready/Away presence; a bounded server-authored conversation that is completely hidden while the Floor is active and opens at the break; and one-click promotion of a useful Porch line into a durable CRDT Spark. A sender keeps their draft until the server acknowledges the exact operation. Porch conversation is cleared when the next focus begins.
 - Emoji reactions and semantic room signals are phase-aware. During focus they produce no recipient event, badge, sound, or animation; successful completion commits one aggregate release with the Ember and offers connected clients one restrained bloom. Reconnect recovers that release as calm Porch text without replaying transient motion or sound. During gathering and breaks signals arrive immediately. Peer audio is a separate local opt-in, off by default, and traffic is limited per member and per room.
 - A manual reset, mode change, or cadence change aborts the Floor into gathering: accepted words become visible, while transient reactions and signals are discarded rather than presented as a completed-Block celebration.
-- Tasks and sparks live in a TinyBase `MergeableStore`, persist to IndexedDB, and synchronize through the same room. Server-side schemas, message caps, and rate limits constrain writes.
+- Tasks and sparks live in a TinyBase `MergeableStore`, persist to IndexedDB, and synchronize through the authenticated room socket. The server validates, canonicalizes, restamps, and durably stores accepted CRDT content; guests are read-only, author identity is server-bound, and hostile future clocks cannot dominate the room.
 - Warm noise is synthesized locally with Web Audio. Wake Lock and opt-in completion notifications are progressive enhancements; no audio assets or tracking services are bundled.
 - A dominant living view opens on the Treasure Island panorama from Mersea/Teleport and also accepts ABC7’s Treasure Island camera, TrazCam, NASA’s ISS feed, and standard YouTube video or playlist links. Any participant can change the shared source or transport; it converges across browsers and survives reconnects. Instrument mode cover-crops the embed; Camera Controls clears the instrument and exposes shared playback controls.
 - The shared clock and four stable surfaces—Workspace, Environment, Tempo, and Room—are inscribed over the living view. The clock remains reachable while a surface is open; surface drafts and shared state survive responsive posture changes.
@@ -119,6 +121,8 @@ npm run dev
 
 Open the same URL (including its `?room=` value) in two browser windows. The web app runs on `http://localhost:5173`; the PartyKit room runs on port `1999`.
 
+New UUID rooms open behind the arrival veil. Create the room in the first browser, then share both the room URL and the separately displayed invitation code with the second browser. Named pre-existing rooms continue in legacy-open mode.
+
 ```sh
 npm run check
 ```
@@ -127,14 +131,17 @@ This runs timer/media/Porch state-machine and YouTube URL tests, deterministic r
 
 ## Put rooms online
 
-Deploy the PartyKit worker, then point the web build at it:
+Provision the worker's internal pre-admission secret once, deploy the worker, then point the web build at it:
 
 ```sh
+npx partykit env add MAGMA_INTERNAL_SECRET
 npm run deploy:room
 VITE_PARTYKIT_HOST=magma-focus.deepfates.partykit.dev npm run build
 ```
 
-Host `dist/` on any static host. New rooms receive high-entropy links, but production identity and private-room authorization are intentionally not faked: anyone with a room link can join. Treat current rooms as public and do not put secrets in the workspace.
+`MAGMA_INTERNAL_SECRET` must be at least 32 characters and must stay in PartyKit's environment store; do not put it in source, Vite variables, or deployment arguments. Host `dist/` on an allowed HTTPS origin. Additional client origins must be listed exactly in `MAGMA_ALLOWED_ORIGINS` before deployment.
+
+Private-room production admission is real, but one transport caveat remains: browser WebSockets cannot set an arbitrary authorization header, and this PartyKit version does not negotiate the asynchronous admission subprotocol correctly. The client therefore places only a 30-second, one-use admission ticket in the WebSocket handshake query and the worker consumes and strips it before room code. Invitation capabilities, signing keys, and profile fields never enter URLs. Eliminating even that ephemeral query credential—through a same-site cookie/custom-domain boundary or a runtime with correct subprotocol negotiation—remains required before the stricter 1.0 “no secrets in URLs” gate can be claimed.
 
 `npm audit` currently reports five advisories inherited through PartyKit's local Miniflare/esbuild toolchain (four moderate, one high) with no non-breaking npm remediation. They do not appear in the Vite browser bundle, but the room toolchain should be upgraded or migrated with PartyKit's Cloudflare successor before treating this as a hardened public service.
 
@@ -144,6 +151,6 @@ The CRDT owns independently editable workspace data. The clock and media transpo
 
 For ordinary videos and playlists, browsers converge to a server-anchored position within a practical buffering tolerance. For YouTube live cameras, synchronization means the same source and live-playback intent—not the same encoded frame, because provider latency and ads can differ by client.
 
-The current deployed slice is an excellent public-link focus room, not yet the private social salon defined for 1.0 above. Account recovery, organization policy, analytics, calendar integrations, and native mobile background execution remain outside the current release until their product meaning and operating model are chosen.
+The current deployed slice is a signed, revocable private focus room with the first Porch loop, not yet the complete social salon defined for 1.0 above. The explicit Porch → next Floor return ritual, server-authoritative listening queue, bounded paginated communication and moderation history, real SFU/TURN voice, finer-grained room policy, operational nuisance limits, and representative human salon evidence remain incomplete.
 
 The cover-cropped YouTube composition is intended for this personal instrument, not claimed as a generally distributable integration. The render layer keeps a clean media boundary so a licensed native HLS/WebRTC/video source can later replace it without changing the clock, room, ritual, or workspace authorities.

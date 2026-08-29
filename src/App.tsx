@@ -18,6 +18,8 @@ import {EnvironmentLab} from './EnvironmentLab';
 import {BlockAim} from './BlockAim';
 import {useBlockRitual} from './useBlockRitual';
 import {Porch} from './Porch';
+import {ArrivalVeil, RoomAccess, type ArrivalState} from './ArrivalVeil';
+import {useRoomAccess} from './useRoomAccess';
 
 const MODES: {id: TimerMode; label: string}[] = [
   {id: 'focus', label: 'Focus'},
@@ -30,7 +32,7 @@ const PROFILE_COLORS = ['#ff7a90', '#9d8cff', '#65d9c4', '#ffd071', '#7ab8ff', '
 const roomFromUrl = () => {
   const room = new URLSearchParams(window.location.search).get('room');
   if (room) return room.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64) || 'molten-lobby';
-  const generated = `glow-${crypto.randomUUID().replaceAll('-', '')}`;
+  const generated = crypto.randomUUID();
   const url = new URL(window.location.href);
   url.searchParams.set('room', generated);
   window.history.replaceState({}, '', url);
@@ -63,10 +65,11 @@ function ProfileEditor({profile, onChange, onClose}: {profile: Profile; onChange
   );
 }
 
-function People({participants, profile, timer, hostId, isHost, editProfile, transferHost, setPresence}: {
+function People({participants, profile, timer, hostId, isHost, editProfile, transferHost, setPresence, viewerRole, revokeMember}: {
   participants: Participant[]; profile: Profile; hostId: string | null; isHost: boolean;
   timer: TimerState; editProfile: () => void; transferHost: (memberId: string) => void;
   setPresence: (choice: Participant['presence']) => void;
+  viewerRole?: Participant['role']; revokeMember?: (memberId: string) => void;
 }) {
   const self = participants.find((person) => person.memberId === profile.memberId);
   const ready = participants.filter((person) => deriveParticipantPosture(person.presence, timer) === 'ready').length;
@@ -78,8 +81,9 @@ function People({participants, profile, timer, hostId, isHost, editProfile, tran
           const posture = deriveParticipantPosture(person.presence, timer);
           return <div className="person" data-posture={posture} key={person.memberId}>
             <button className="avatar" style={{'--person-color': person.color} as React.CSSProperties} onClick={person.memberId === profile.memberId ? editProfile : undefined} aria-label={person.memberId === profile.memberId ? 'Edit your profile' : `${person.name} profile`}>{person.emoji}</button>
-            <div><strong>{person.name}{person.memberId === profile.memberId ? ' · you' : ''}</strong><small><span className="posture">{posture}</span>{person.intention ? ` · ${person.intention}` : ''}{person.connections > 1 ? ` · ${person.connections} tabs` : ''}</small></div>
+            <div><strong>{person.name}{person.memberId === profile.memberId ? ' · you' : ''}</strong><small><span className="posture">{posture}</span>{person.role !== 'member' ? ` · ${person.role}` : ''}{person.intention ? ` · ${person.intention}` : ''}{person.connections > 1 ? ` · ${person.connections} tabs` : ''}</small></div>
             {person.memberId === hostId ? <Crown className="host-crown" size={13} aria-label="Room host" /> : isHost ? <button className="host-transfer" onClick={() => transferHost(person.memberId)} aria-label={`Make ${person.name} host`}><Crown size={12} /></button> : <span className="pulse" />}
+            {person.memberId !== profile.memberId && revokeMember && ((viewerRole === 'owner' && person.role !== 'owner') || (viewerRole === 'steward' && ['member', 'guest'].includes(person.role))) && <button className="icon-button danger" onClick={() => revokeMember(person.memberId)} aria-label={`Remove ${person.name} from room`}><Trash2 size={13} /></button>}
           </div>;
         })}
       </div>
@@ -88,7 +92,7 @@ function People({participants, profile, timer, hostId, isHost, editProfile, tran
   );
 }
 
-function Tasks({profile, participants}: {profile: Profile; participants: Participant[]}) {
+function Tasks({profile, participants, writable}: {profile: Profile; participants: Participant[]; writable: boolean}) {
   const tasks = useTable('tasks', store);
   const [draft, setDraft] = useState('');
   const ordered = useMemo(() => Object.entries(tasks).sort(([, a], [, b]) => Number(a.createdAt) - Number(b.createdAt)), [tasks]);
@@ -109,20 +113,20 @@ function Tasks({profile, participants}: {profile: Profile; participants: Partici
           const owner = people.get(String(task.ownerId));
           return (
             <div className={`task ${task.done ? 'done' : ''}`} key={id}>
-              <button className="task-check" onClick={() => store.setRow('tasks', id, {...task, done: !task.done, completedAt: task.done ? 0 : Date.now()})} aria-label={`Mark ${task.text} ${task.done ? 'unfinished' : 'done'}`}>{task.done ? <Check size={14} /> : <Circle size={14} />}</button>
+              <button className="task-check" disabled={!writable} onClick={() => store.setRow('tasks', id, {...task, done: !task.done, completedAt: task.done ? 0 : Date.now()})} aria-label={`Mark ${task.text} ${task.done ? 'unfinished' : 'done'}`}>{task.done ? <Check size={14} /> : <Circle size={14} />}</button>
               <div><span>{String(task.text)}</span><small>{owner ? `${owner.emoji} ${owner.name}` : task.ownerName ? String(task.ownerName) : 'unclaimed'}</small></div>
-              <button className="claim-button" onClick={() => store.setRow('tasks', id, {...task, ownerId: task.ownerId === profile.memberId ? '' : profile.memberId, ownerName: task.ownerId === profile.memberId ? '' : profile.name})}>{task.ownerId === profile.memberId ? 'Release' : 'Claim'}</button>
-              <button className="icon-button danger" onClick={() => store.delRow('tasks', id)} aria-label={`Delete ${task.text}`}><Trash2 size={14} /></button>
+              <button className="claim-button" disabled={!writable} onClick={() => store.setRow('tasks', id, {...task, ownerId: task.ownerId === profile.memberId ? '' : profile.memberId, ownerName: task.ownerId === profile.memberId ? '' : profile.name})}>{task.ownerId === profile.memberId ? 'Release' : 'Claim'}</button>
+              <button className="icon-button danger" disabled={!writable} onClick={() => store.delRow('tasks', id)} aria-label={`Delete ${task.text}`}><Trash2 size={14} /></button>
             </div>
           );
         })}
       </div>
-      <div className="add-task"><input value={draft} maxLength={160} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="What are we making real?" /><button onClick={add} aria-label="Add intention"><Plus size={17} /></button></div>
+      {writable ? <div className="add-task"><input value={draft} maxLength={160} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="What are we making real?" /><button onClick={add} aria-label="Add intention"><Plus size={17} /></button></div> : <p className="surface-note">Guests can read the workspace. A steward can invite you as a member to edit it.</p>}
     </div>
   );
 }
 
-function Sparks({profile}: {profile: Profile}) {
+function Sparks({profile, writable}: {profile: Profile; writable: boolean}) {
   const sparks = useTable('sparks', store);
   const [draft, setDraft] = useState('');
   const ordered = useMemo(() => Object.entries(sparks).sort(([, a], [, b]) => Number(b.createdAt) - Number(a.createdAt)), [sparks]);
@@ -136,14 +140,14 @@ function Sparks({profile}: {profile: Profile}) {
     <div className="workspace-content">
       <div className="spark-list">
         {ordered.length === 0 && <p className="empty">Leave a thought without interrupting the room.</p>}
-        {ordered.map(([id, spark]) => <div className="spark" key={id}><span>{String(spark.emoji)}</span><div><p>{String(spark.text)}</p><small>{String(spark.authorName)}</small></div><button className="icon-button" onClick={() => store.setCell('sparks', id, 'pinned', !spark.pinned)} aria-label={`${spark.pinned ? 'Unpin' : 'Pin'} note`}><Pin size={13} fill={spark.pinned ? 'currentColor' : 'none'} /></button>{spark.authorId === profile.memberId && <button className="icon-button" onClick={() => store.delRow('sparks', id)} aria-label="Delete your note"><Trash2 size={13} /></button>}</div>)}
+        {ordered.map(([id, spark]) => <div className="spark" key={id}><span>{String(spark.emoji)}</span><div><p>{String(spark.text)}</p><small>{String(spark.authorName)}</small></div><button className="icon-button" disabled={!writable} onClick={() => store.setCell('sparks', id, 'pinned', !spark.pinned)} aria-label={`${spark.pinned ? 'Unpin' : 'Pin'} note`}><Pin size={13} fill={spark.pinned ? 'currentColor' : 'none'} /></button>{writable && spark.authorId === profile.memberId && <button className="icon-button" onClick={() => store.delRow('sparks', id)} aria-label="Delete your note"><Trash2 size={13} /></button>}</div>)}
       </div>
-      <div className="add-task"><input value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="Leave a spark for the room" /><button onClick={add} aria-label="Add room note"><Plus size={17} /></button></div>
+      {writable ? <div className="add-task"><input value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="Leave a spark for the room" /><button onClick={add} aria-label="Add room note"><Plus size={17} /></button></div> : <p className="surface-note">Guests can read Sparks without changing them.</p>}
     </div>
   );
 }
 
-function Workspace({profile, participants}: {profile: Profile; participants: Participant[]}) {
+function Workspace({profile, participants, writable}: {profile: Profile; participants: Participant[]; writable: boolean}) {
   const [tab, setTab] = useState<'tasks' | 'sparks'>('tasks');
   const tasks = useTable('tasks', store);
   const sparks = useTable('sparks', store);
@@ -153,7 +157,7 @@ function Workspace({profile, participants}: {profile: Profile; participants: Par
         <button role="tab" aria-selected={tab === 'tasks'} className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}><Check size={15} /> Intentions <small>{Object.keys(tasks).length}</small></button>
         <button role="tab" aria-selected={tab === 'sparks'} className={tab === 'sparks' ? 'active' : ''} onClick={() => setTab('sparks')}><StickyNote size={15} /> Sparks <small>{Object.keys(sparks).length}</small></button>
       </div>
-      {tab === 'tasks' ? <Tasks profile={profile} participants={participants} /> : <Sparks profile={profile} />}
+      {tab === 'tasks' ? <Tasks profile={profile} participants={participants} writable={writable} /> : <Sparks profile={profile} writable={writable} />}
     </section>
   );
 }
@@ -177,14 +181,18 @@ type Surface = 'workspace' | 'environment' | 'tempo' | 'room';
 
 function App() {
   const [room] = useState(roomFromUrl);
-  const session = useRoom(room);
+  const access = useRoomAccess(room);
+  const protectedAccess = access.session.kind === 'admitted' ? access.session : null;
+  const legacyAccess = access.session.kind === 'legacy';
+  const session = useRoom(room, legacyAccess ? undefined : protectedAccess?.admission ?? null, protectedAccess?.refreshAdmission);
   const milliseconds = useClock(session.remaining);
   const audio = useAmbientAudio();
   const backdrop = useYouTubeBackdrop(session.media.source, (source) => session.mediaCommand({type: 'source', source}), session.connected);
   const ritual = useBlockRitual();
   const assist = useFocusAssist(session.timer.status === 'running', session.completion, audio.playChime);
   const [copied, setCopied] = useState(false);
-  const [roomDraft, setRoomDraft] = useState(room);
+  const [invitationPayload, setInvitationPayload] = useState('');
+  const [invitationBusy, setInvitationBusy] = useState<'copying' | 'rotating' | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [activeSurface, setActiveSurface] = useState<Surface | null>(null);
   const [playerMode, setPlayerMode] = useState(false);
@@ -198,7 +206,23 @@ function App() {
   const socialFlush = useRef<number | null>(null);
   const socialClear = useRef<number | null>(null);
   const surfaceTrigger = useRef<HTMLButtonElement | null>(null);
+  const instrumentRef = useRef<HTMLElement | null>(null);
   const progress = 1 - milliseconds / session.timer.durationMs;
+
+  const applyQuietBoundary = () => {
+    backdrop.setMuted(true);
+    audio.silence();
+    assist.disableNotifications();
+  };
+
+  useEffect(() => {
+    if (access.session.kind !== 'revoked') return;
+    applyQuietBoundary();
+    backdrop.setEnabled(false);
+    backdrop.setReducedSensory(true);
+    setPlayerMode(false);
+    setActiveSurface(null);
+  }, [access.session.kind]);
 
   useEffect(() => {
     if (!session.completion) return;
@@ -279,17 +303,38 @@ function App() {
     window.requestAnimationFrame(() => surfaceTrigger.current?.focus());
   };
 
-  const copyInvite = async () => {
-    await navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
+  const copyInvite = async (rotate = false, role: 'steward' | 'member' | 'guest' = 'member') => {
+    setInvitationBusy(rotate ? 'rotating' : 'copying');
+    try {
+      const url = new URL(window.location.href);
+      url.hash = '';
+      if (legacyAccess) {
+        const payload = url.toString();
+        setInvitationPayload(payload);
+        await navigator.clipboard.writeText(payload).catch(() => undefined);
+      } else {
+        const capability = await session.createInvitation(role, rotate);
+        if (!capability) return false;
+        const payload = `Join my Magma room as ${role}:\n${url.toString()}\n\nInvitation code:\n${capability}`;
+        setInvitationPayload(payload);
+        await navigator.clipboard.writeText(payload).catch(() => undefined);
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+      return true;
+    } finally {
+      setInvitationBusy(null);
+    }
   };
-  const joinRoom = () => {
-    const next = roomDraft.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 64);
-    if (!next || next === room) return;
-    const url = new URL(window.location.href);
-    url.searchParams.set('room', next);
-    window.location.assign(url);
+  const copyPreparedInvitation = async () => {
+    if (!invitationPayload) return;
+    try {
+      await navigator.clipboard.writeText(invitationPayload);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // The selectable text remains available when clipboard policy denies the write.
+    }
   };
   const promotePorchMessage = (message: PorchMessage) => {
     store.setRow('sparks', `porch-${message.id}`, {
@@ -313,9 +358,23 @@ function App() {
     {id: 'tempo', label: 'Tempo', icon: <Settings size={18} />},
     {id: 'room', label: 'Room', icon: <Users size={18} />},
   ];
+  const arrivalState: ArrivalState = access.session.kind === 'checking'
+    ? {kind: 'proving', roomName: room}
+    : access.session.kind === 'create'
+      ? {kind: 'creating', step: 'form', submitting: access.session.busy, initialDisplayName: session.profile.name, initialEmoji: session.profile.emoji, error: access.session.error}
+      : access.session.kind === 'invitation'
+        ? {kind: 'invited', roomName: 'this Magma room', role: 'member', phase: 'unknown', invitationRequired: true, displayName: session.profile.name, emoji: session.profile.emoji, entering: access.session.busy, error: access.session.error}
+        : access.session.kind === 'revoked'
+          ? {kind: 'revoked', roomName: 'this Magma room'}
+          : access.session.kind === 'denied'
+            ? {kind: 'denied', reason: 'unknown', retryable: access.session.retryable}
+            : access.session.kind === 'admitted' && !session.connected
+              ? {kind: 'reconnecting', roomName: 'this Magma room'}
+              : {kind: 'admitted', roomName: room, role: access.session.kind === 'admitted' ? access.session.admission.role : 'member'};
 
   return (
-    <main className={`instrument-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''} ${playerMode ? 'player-mode' : ''}`}>
+    <>
+    <main ref={instrumentRef} data-arrival-background className={`instrument-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''} ${playerMode ? 'player-mode' : ''}`}>
       <section className="media-stage" aria-label="Living view">
         <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canShare={session.connected} muted={backdrop.muted} />
         {(!backdrop.enabled || backdrop.reducedSensory) && <div className="quiet-field">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />}<span>{backdrop.reducedSensory ? 'Quiet field' : 'Lava field'}</span></div>}
@@ -348,21 +407,23 @@ function App() {
             </>}
           </section>
 
-          <section className="tool-surface" hidden={activeSurface !== 'workspace'} aria-labelledby="surface-workspace"><div className="surface-header"><div><p>Shared surface</p><h2 id="surface-workspace" tabIndex={-1}>Workspace</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Workspace"><X size={18} /></button></div><Workspace profile={session.profile} participants={session.participants} /></section>
+          <section className="tool-surface" hidden={activeSurface !== 'workspace'} aria-labelledby="surface-workspace"><div className="surface-header"><div><p>Shared surface</p><h2 id="surface-workspace" tabIndex={-1}>Workspace</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Workspace"><X size={18} /></button></div><Workspace profile={session.profile} participants={session.participants} writable={session.workspaceWritable} /></section>
           <section className="tool-surface" hidden={activeSurface !== 'environment'} aria-labelledby="surface-environment"><div className="surface-header"><div><p>Room + personal</p><h2 id="surface-environment" tabIndex={-1}>Environment</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Environment"><X size={18} /></button></div><EnvironmentLab backdrop={backdrop} audio={audio} sendSignal={session.signal} /></section>
           <section className="tool-surface" hidden={activeSurface !== 'tempo'} aria-labelledby="surface-tempo"><div className="surface-header"><div><p>Room authority</p><h2 id="surface-tempo" tabIndex={-1}>Tempo</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Tempo"><X size={18} /></button></div>
             <div className="mode-switcher">{MODES.map((mode) => <button aria-pressed={session.timer.mode === mode.id} className={session.timer.mode === mode.id ? 'active' : ''} key={mode.id} onClick={() => session.command({type: 'mode', mode: mode.id})}>{mode.label}</button>)}</div>
             <div className="timer-settings"><label>Focus <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.focus / 60_000} id="focus-duration" /> min</span></label><label>Short break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.shortBreak / 60_000} id="short-duration" /> min</span></label><label>Long break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.longBreak / 60_000} id="long-duration" /> min</span></label><label className="auto-setting"><input type="checkbox" defaultChecked={session.timer.autoAdvance} id="auto-advance" /> Auto-start breaks</label><button disabled={!session.isHost} onClick={() => { const get = (id: string) => Number((document.getElementById(id) as HTMLInputElement).value) * 60_000; session.updateSettings({focus: get('focus-duration'), shortBreak: get('short-duration'), longBreak: get('long-duration')}, (document.getElementById('auto-advance') as HTMLInputElement).checked); }}>{session.isHost ? 'Set room cadence' : 'Host controls cadence'}</button></div>
             <button className="text-action" onClick={assist.requestNotifications}>{assist.notifications ? <Bell size={14} /> : <BellOff size={14} />}{assist.notifications ? 'Completion alerts on' : 'Enable completion alerts'}</button>
           </section>
-          <section className="tool-surface" hidden={activeSurface !== 'room'} aria-labelledby="surface-room"><div className="surface-header"><div><p>Public link room</p><h2 id="surface-room" tabIndex={-1}>Room</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Room"><X size={18} /></button></div>
-            <div className="room-editor"><span className={`status-dot ${session.connected ? 'online' : ''}`} /><input aria-label="Room name" value={roomDraft} onChange={(event) => setRoomDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && joinRoom()} /><button onClick={joinRoom}>Join</button><button onClick={copyInvite}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Invite'}</button></div>
-            <People participants={session.participants} profile={session.profile} timer={session.timer} hostId={session.hostId} isHost={session.isHost} editProfile={() => setEditingProfile(true)} transferHost={session.transferHost} setPresence={session.setPresence} />
+          <section className="tool-surface" hidden={activeSurface !== 'room'} aria-labelledby="surface-room"><div className="surface-header"><div><p>{legacyAccess ? 'Legacy open room' : 'Private room'}</p><h2 id="surface-room" tabIndex={-1}>Room</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Room"><X size={18} /></button></div>
+            <div className="room-editor"><span className={`status-dot ${session.connected ? 'online' : ''}`} /><strong>{legacyAccess ? 'Open by link' : 'Invitation only'}</strong>{(legacyAccess || ['owner', 'steward'].includes(session.role)) && <button onClick={() => { void copyInvite(); }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : legacyAccess ? 'Copy link' : 'Create invite'}</button>}</div>
+            <People participants={session.participants} profile={session.profile} timer={session.timer} hostId={session.hostId} isHost={session.isHost} editProfile={() => setEditingProfile(true)} transferHost={session.transferHost} setPresence={session.setPresence} viewerRole={session.role} revokeMember={legacyAccess ? undefined : session.revokeMember} />
             {editingProfile && <div className="profile-card"><ProfileEditor profile={session.profile} onChange={session.updateProfile} onClose={() => setEditingProfile(false)} /></div>}
-            <Porch messages={session.porchMessages} floor={isFloor(session.timer)} connected={session.connected} release={session.socialRelease} onSend={session.sendPorchMessage} onPromote={promotePorchMessage} />
+            <Porch messages={session.porchMessages} floor={isFloor(session.timer)} connected={session.connected} release={session.socialRelease} onSend={session.sendPorchMessage} onPromote={session.workspaceWritable ? promotePorchMessage : undefined} />
             <div className="reactions" aria-label="Send a reaction">{[['🔥','fire'], ['✨','sparkles'], ['🫡','salute'], ['💧','water']].map(([emoji, name]) => <button aria-label={`Send ${name} reaction`} key={emoji} onClick={() => session.react(emoji)}>{emoji}</button>)}</div>
             <small className="reaction-policy">{isFloor(session.timer) ? 'Reactions rest until the Porch opens.' : 'Reactions appear now.'}</small>
-            <p className="surface-note">Anyone with this link can enter. Don’t put secrets in the workspace.</p>
+            {!legacyAccess && protectedAccess && <RoomAccess role={protectedAccess.admission.role} busy={invitationBusy} copied={copied} onCopyInvitation={(role) => copyInvite(false, role)} onRotateInvitation={(role) => copyInvite(true, role)} />}
+            {invitationPayload && <section className="invitation-ready" aria-label="Prepared invitation"><label>Invitation ready<textarea readOnly value={invitationPayload} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" onClick={() => { void copyPreparedInvitation(); }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy invitation'}</button><small>The room address and invitation code stay separate. Share both privately.</small></section>}
+            <p className="surface-note">{legacyAccess ? 'This older room remains open to anyone with its link. Make a new room for signed, revocable access.' : 'Profiles are editable; room membership is bound to this device’s private key.'}</p>
           </section>
         </div>
 
@@ -373,6 +434,24 @@ function App() {
       {socialTreatment && <><div className="social-announcement" role="status" aria-live="polite" aria-atomic="true">{socialTreatment.text}</div><div className="social-bloom-visual" key={socialTreatment.id} aria-hidden="true"><span>{socialTreatment.glyph}</span></div></>}
       <div className="room-live" aria-live="polite">{session.notice}</div>
     </main>
+    <ArrivalVeil
+      state={arrivalState}
+      backgroundRef={instrumentRef}
+      onCreate={(input) => {
+        session.updateProfile({name: input.displayName, emoji: input.emoji});
+        if (input.setup === 'quiet') applyQuietBoundary();
+        void access.create({...session.profile, name: input.displayName, emoji: input.emoji});
+      }}
+      onEnter={(input) => {
+        session.updateProfile({name: input.displayName, emoji: input.emoji});
+        if (input.setup === 'quiet') applyQuietBoundary();
+        void access.enter({...session.profile, name: input.displayName, emoji: input.emoji}, input.invitationCode ?? '');
+      }}
+      onRetry={() => { void access.retry(); }}
+      onReturnHome={() => window.location.assign(window.location.pathname)}
+      onLeaveRoom={() => window.location.assign(window.location.pathname)}
+    />
+    </>
   );
 }
 

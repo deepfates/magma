@@ -11,5 +11,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "party", "src/domain"]
+  "include": ["vite.config.ts", "party", "src/domain", "src/workspaceTransport.ts"]
 }

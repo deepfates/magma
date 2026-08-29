@@ -7,7 +7,7 @@ type PorchProps = {
   connected: boolean;
   release: SocialRelease | null;
   onSend: (text: string) => void | boolean | Promise<boolean>;
-  onPromote: (message: PorchMessage) => void;
+  onPromote?: (message: PorchMessage) => void;
 };
 
 const formatTime = (createdAt: number) =>
@@ -94,9 +94,9 @@ export function Porch({messages, floor, connected, release, onSend, onPromote}: 
                   <time dateTime={new Date(message.createdAt).toISOString()}>{formatTime(message.createdAt)}</time>
                 </header>
                 <p className="porch-message-body">{message.text}</p>
-                <button className="porch-promote" type="button" onClick={() => onPromote(message)}>
+                {onPromote && <button className="porch-promote" type="button" onClick={() => onPromote(message)}>
                   Promote to Spark
-                </button>
+                </button>}
               </div>
             </article>
           ))}

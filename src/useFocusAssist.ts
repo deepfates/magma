@@ -21,6 +21,11 @@ export const useFocusAssist = (
     return allowed;
   }, []);
 
+  const disableNotifications = useCallback(() => {
+    setNotifications(false);
+    localStorage.setItem('magma:notifications', 'off');
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const updateWakeLock = async () => {
@@ -63,5 +68,5 @@ export const useFocusAssist = (
     wakeLock.current?.release().catch(() => undefined);
   }, []);
 
-  return {notifications, requestNotifications};
+  return {notifications, requestNotifications, disableNotifications};
 };

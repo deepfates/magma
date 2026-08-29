@@ -1,10 +1,11 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import type PartySocket from 'partysocket';
-import {connectWorkspace} from './store';
+import {clearWorkspaceCache, connectWorkspace} from './store';
 import {createTimer, remainingAt, type TimerCommand, type TimerDurations, type TimerState} from './domain/timer';
 import {createMediaState, type MediaCommand, type RoomMediaState} from './domain/media';
 import type {Participant, Profile, RoomSnapshot, SessionArtifact, TimerProposal} from './domain/protocol';
 import type {PorchMessage, PresenceChoice, RoomCueId, RoomSignal, SocialRelease} from './domain/porch';
+import type {RoomAdmission} from './accessClient';
 
 export type Reaction = {id: string; emoji: string; from: string};
 
@@ -32,7 +33,11 @@ const loadProfile = (): Profile => {
   }
 };
 
-export const useRoom = (room: string) => {
+export const useRoom = (
+  room: string,
+  admission?: RoomAdmission | null,
+  refreshAdmission?: () => Promise<RoomAdmission>,
+) => {
   const [profile, setProfile] = useState<Profile>(loadProfile);
   const profileRef = useRef(profile);
   const socketRef = useRef<PartySocket | null>(null);
@@ -54,7 +59,11 @@ export const useRoom = (room: string) => {
   const [socialRelease, setSocialRelease] = useState<SocialRelease | null>(null);
   const [socialBloom, setSocialBloom] = useState<SocialRelease | null>(null);
   const pendingPorchMessages = useRef(new Map<string, {text: string; resolve: (accepted: boolean) => void; timeoutId: number}>());
+  const pendingInvitations = useRef(new Map<string, {resolve: (capability: string | null) => void; timeoutId: number}>());
   const seenReleases = useRef(new Set<string>());
+  const sessionMemberId = admission?.membershipId ?? profile.memberId;
+  const accessKey = admission === null ? 'pending' : admission?.membershipId ?? 'legacy';
+  const wireProfile = useCallback((): Profile => ({...profileRef.current, memberId: admission?.membershipId ?? profileRef.current.memberId}), [admission?.membershipId]);
 
   useEffect(() => {
     try {
@@ -71,11 +80,31 @@ export const useRoom = (room: string) => {
   }, [profile]);
 
   useEffect(() => {
+    if (admission === null) {
+      socketRef.current = null;
+      setConnected(false);
+      setTimer(createTimer());
+      setMedia(createMediaState());
+      setMediaReady(false);
+      setParticipants([]);
+      setHostId(null);
+      setProposal(null);
+      setArtifacts([]);
+      setCompletion(null);
+      setNotice(null);
+      setReactions([]);
+      setPorchMessages([]);
+      setSignals([]);
+      setSocialRelease(null);
+      setSocialBloom(null);
+      clearWorkspaceCache(room);
+      return;
+    }
     let disposed = false;
     let cleanup: (() => Promise<void>) | undefined;
     let pingInterval = 0;
 
-    connectWorkspace(room, profileRef.current).then((connection) => {
+    connectWorkspace(room, wireProfile(), admission ?? undefined, refreshAdmission).then((connection) => {
       if (disposed) return connection.destroy();
       cleanup = connection.destroy;
       socketRef.current = connection.socket;
@@ -83,7 +112,7 @@ export const useRoom = (room: string) => {
       const ping = () => connection.socket.send(JSON.stringify({type: 'clock.ping', clientSentAt: Date.now()}));
       const hello = () => {
         setConnected(true);
-        connection.socket.send(JSON.stringify({type: 'hello', profile: profileRef.current}));
+        connection.socket.send(JSON.stringify({type: 'hello', profile: wireProfile()}));
         for (const [nonce, pending] of pendingPorchMessages.current) {
           connection.socket.send(JSON.stringify({type: 'porch.message', nonce, text: pending.text}));
         }
@@ -126,6 +155,7 @@ export const useRoom = (room: string) => {
             setNotice(data.message);
             window.setTimeout(() => setNotice(null), 3200);
           }
+          if (data.type === 'access.revoked') window.dispatchEvent(new CustomEvent('magma:access-revoked', {detail: {room}}));
           if (data.type === 'reaction') {
             setReactions((current) => [...current.slice(-7), data]);
             window.setTimeout(() => setReactions((current) => current.filter((item) => item.id !== data.id)), 2800);
@@ -140,6 +170,14 @@ export const useRoom = (room: string) => {
               pendingPorchMessages.current.delete(data.nonce);
               window.clearTimeout(pending.timeoutId);
               pending.resolve(true);
+            }
+          }
+          if ((data.type === 'access.invite.created' || data.type === 'access.invite.rejected') && typeof data.nonce === 'string') {
+            const pending = pendingInvitations.current.get(data.nonce);
+            if (pending) {
+              pendingInvitations.current.delete(data.nonce);
+              window.clearTimeout(pending.timeoutId);
+              pending.resolve(data.type === 'access.invite.created' && typeof data.capability === 'string' ? data.capability : null);
             }
           }
           if (data.type === 'social.signal') {
@@ -177,8 +215,13 @@ export const useRoom = (room: string) => {
         pending.resolve(false);
       }
       pendingPorchMessages.current.clear();
+      for (const pending of pendingInvitations.current.values()) {
+        window.clearTimeout(pending.timeoutId);
+        pending.resolve(null);
+      }
+      pendingInvitations.current.clear();
     };
-  }, [room]);
+  }, [room, accessKey, wireProfile]);
 
   const send = useCallback((message: object) => socketRef.current?.send(JSON.stringify(message)), []);
   const command = useCallback((value: TimerCommand) => send({type: 'timer.command', command: value, expectedRevision: timer.revision}), [send, timer.revision]);
@@ -201,15 +244,31 @@ export const useRoom = (room: string) => {
     socket.send(JSON.stringify({type: 'porch.message', nonce, text}));
   }), []);
   const signal = useCallback((cueId: RoomCueId) => send({type: 'social.signal', nonce: crypto.randomUUID(), cueId}), [send]);
+  const createInvitation = useCallback((role: 'steward' | 'member' | 'guest' = 'member', rotate = false) => new Promise<string | null>((resolve) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN || !admission) {
+      resolve(null);
+      return;
+    }
+    const nonce = crypto.randomUUID();
+    const timeoutId = window.setTimeout(() => {
+      const pending = pendingInvitations.current.get(nonce);
+      if (!pending) return;
+      pendingInvitations.current.delete(nonce);
+      pending.resolve(null);
+    }, 12_000);
+    pendingInvitations.current.set(nonce, {resolve, timeoutId});
+    socket.send(JSON.stringify({type: 'access.invite.create', nonce, role, rotate}));
+  }), [admission]);
   const updateProfile = useCallback((patch: Partial<Omit<Profile, 'memberId'>>) => {
     setProfile((current) => {
       const next = {...current, ...patch};
       profileRef.current = next;
       localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
-      send({type: 'hello', profile: next});
+      send({type: 'hello', profile: {...next, memberId: admission?.membershipId ?? next.memberId}});
       return next;
     });
-  }, [send]);
+  }, [admission?.membershipId, send]);
   const updateSettings = useCallback((durations: TimerDurations, autoAdvance: boolean) => send({
     type: 'timer.settings', durations, autoAdvance, expectedRevision: timer.revision, expectedSessionId: timer.sessionId,
   }), [send, timer.revision, timer.sessionId]);
@@ -217,6 +276,7 @@ export const useRoom = (room: string) => {
   const approve = useCallback((proposalId: string) => send({type: 'timer.approve', proposalId}), [send]);
   const dismiss = useCallback((proposalId: string) => send({type: 'timer.dismiss', proposalId}), [send]);
   const transferHost = useCallback((memberId: string) => send({type: 'host.transfer', memberId}), [send]);
+  const revokeMember = useCallback((memberId: string) => send({type: 'access.member.revoke', memberId}), [send]);
   const remaining = useCallback(() => remainingAt(timer, Date.now() + serverOffset), [serverOffset, timer]);
   const roomNow = useCallback(() => Date.now() + serverOffset, [serverOffset]);
 
@@ -227,7 +287,7 @@ export const useRoom = (room: string) => {
     mediaReady,
     participants,
     hostId,
-    isHost: hostId === profile.memberId,
+    isHost: hostId === sessionMemberId,
     proposal,
     artifacts,
     completion,
@@ -238,7 +298,9 @@ export const useRoom = (room: string) => {
     signals,
     socialRelease,
     socialBloom,
-    profile,
+    profile: {...profile, memberId: sessionMemberId},
+    role: admission?.role ?? 'member',
+    workspaceWritable: admission?.role !== 'guest',
     remaining,
     roomNow,
     command,
@@ -246,11 +308,13 @@ export const useRoom = (room: string) => {
     setPresence,
     sendPorchMessage,
     signal,
+    createInvitation,
     updateProfile,
     updateSettings,
     mediaCommand,
     approve,
     dismiss,
     transferHost,
+    revokeMember,
   };
 };

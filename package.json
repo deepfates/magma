@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -n web,room -c magenta,cyan \"npm:dev:web\" \"npm:dev:room\"",
     "dev:web": "vite --host 0.0.0.0",
-    "dev:room": "partykit dev --port 1999",
+    "dev:room": "partykit dev --port 1999 --var MAGMA_INTERNAL_SECRET=magma-local-development-preconnect-secret",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:e2e": "playwright test",

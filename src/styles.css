@@ -212,6 +212,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .room-editor { display: grid; grid-template-columns: 8px minmax(0,1fr) auto auto; align-items: center; gap: 6px; margin-bottom: 24px; }
 .room-editor input { min-width: 0; padding: 7px 6px; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: transparent; font: 9px ui-monospace, monospace; }
 .room-editor button { display: flex; align-items: center; gap: 5px; padding: 7px; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); background: transparent; cursor: pointer; font-size: 8px; }
+.invitation-ready { display: grid; gap: 8px; margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: rgba(8, 10, 9, .72); }
+.invitation-ready label { display: grid; gap: 5px; color: var(--muted); font-size: 9px; }
+.invitation-ready textarea { width: 100%; min-height: 92px; resize: vertical; padding: 8px; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); background: #0c0e0d; font: 9px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.invitation-ready button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 1px solid var(--line); border-radius: 4px; color: #111; background: var(--accent); cursor: pointer; font-size: 9px; font-weight: 700; }
+.invitation-ready small { color: var(--dim); font-size: 8px; line-height: 1.45; }
+.invitation-ready textarea:focus-visible, .invitation-ready button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .reactions { display: flex; gap: 4px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .reactions button { width: 44px; height: 44px; border: 0; border-radius: 4px; background: var(--field); cursor: pointer; }
 .reaction-policy { display: block; margin-top: 6px; color: var(--dim); font-size: 8px; }

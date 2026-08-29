@@ -1,0 +1,162 @@
+.arrival-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #f1f0eb;
+  background: rgba(5, 7, 6, .48);
+  backdrop-filter: blur(7px);
+}
+
+.arrival-veil {
+  width: min(440px, 100%);
+  max-height: min(760px, calc(100dvh - 48px));
+  padding: 28px;
+  overflow-y: auto;
+  border: 1px solid rgba(241, 240, 235, .2);
+  border-radius: 8px;
+  outline: 0;
+  background: rgba(15, 17, 16, .95);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, .42);
+}
+
+.arrival-mark,
+.arrival-state-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 20px;
+  color: #d9f0a8;
+  border: 1px solid rgba(241, 240, 235, .13);
+}
+
+.arrival-state-icon { color: #c7aaa4; }
+.arrival-kicker { margin: 0 0 5px; color: #9c9d98; text-transform: uppercase; letter-spacing: .12em; font-size: 9px; }
+.arrival-veil h2 { margin: 0; font-size: clamp(27px, 6vw, 38px); line-height: 1.06; letter-spacing: -.035em; font-weight: 560; }
+.arrival-veil h2:focus-visible { outline: 2px solid #f4d58d; outline-offset: 5px; }
+.arrival-veil h2 + p { margin: 13px 0 24px; color: #b2b3ae; font-size: 13px; line-height: 1.55; }
+.arrival-fields { display: grid; gap: 12px; }
+.arrival-fields label { display: grid; gap: 5px; color: #9c9d98; font-size: 11px; }
+.arrival-fields input { min-width: 0; width: 100%; min-height: 44px; padding: 9px 10px; border: 1px solid rgba(241, 240, 235, .16); border-radius: 4px; outline: 0; color: #f1f0eb; background: #0c0e0d; font: inherit; }
+.arrival-fields input:focus-visible { border-color: #d9f0a8; outline: 2px solid #f4d58d; outline-offset: 2px; }
+.arrival-invitation-code { display: grid; gap: 5px; margin-top: 12px; color: #9c9d98; font-size: 11px; }
+.arrival-invitation-code input { min-height: 44px; padding: 9px 10px; border: 1px solid rgba(241, 240, 235, .16); border-radius: 4px; outline: 0; color: #f1f0eb; background: #0c0e0d; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.arrival-invitation-code input:focus-visible { border-color: #d9f0a8; outline: 2px solid #f4d58d; outline-offset: 2px; }
+.arrival-identity-row { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 9px; }
+.arrival-symbol input { text-align: center; font-size: 18px; }
+.arrival-setup { display: grid; gap: 7px; margin: 18px 0; padding: 0; border: 0; }
+.arrival-setup legend { margin-bottom: 7px; color: #9c9d98; font-size: 11px; }
+.arrival-setup label { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 7px; min-height: 48px; padding: 8px 10px; border: 1px solid rgba(241, 240, 235, .13); border-radius: 4px; cursor: pointer; }
+.arrival-setup input { width: 16px; height: 16px; accent-color: #d9f0a8; }
+.arrival-setup strong, .arrival-setup small { display: block; }
+.arrival-setup strong { font-size: 12px; }
+.arrival-setup small { margin-top: 2px; color: #8a8d86; font-size: 10px; }
+.arrival-actions { display: flex; align-items: stretch; gap: 8px; margin-top: 20px; }
+.arrival-actions-stack { display: grid; }
+.arrival-primary,
+.arrival-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+}
+.arrival-primary { color: #10120f; background: #d9f0a8; }
+.arrival-secondary { color: #b2b3ae; border-color: rgba(241, 240, 235, .16); background: transparent; }
+.arrival-primary:disabled, .arrival-secondary:disabled { cursor: not-allowed; opacity: .5; }
+.arrival-primary:focus-visible, .arrival-secondary:focus-visible { outline: 2px solid #f4d58d; outline-offset: 2px; }
+.arrival-veil form > .arrival-primary { width: 100%; }
+.arrival-veil form > small { display: block; margin-top: 9px; color: #8a8d86; text-align: center; font-size: 9px; }
+.arrival-error { color: #efaaa0; font-size: 11px; line-height: 1.4; }
+.arrival-live { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+
+.arrival-reconnecting {
+  position: fixed;
+  left: 50%;
+  top: 62px;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  min-height: 42px;
+  padding: 8px 10px;
+  transform: translateX(-50%);
+  color: #b2b3ae;
+  border: 1px solid rgba(241, 240, 235, .18);
+  border-radius: 4px;
+  background: rgba(12, 14, 13, .92);
+  font-size: 11px;
+}
+.arrival-reconnecting strong { color: #f1f0eb; }
+.arrival-reconnecting button { min-height: 32px; margin-left: 5px; padding: 4px 7px; border: 0; color: #9c9d98; background: transparent; cursor: pointer; font-size: 10px; }
+
+.room-access { position: relative; margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(241, 240, 235, .13); }
+.room-access-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.room-access-heading p { margin: 0 0 3px; color: #8a8d86; text-transform: uppercase; letter-spacing: .11em; font-size: 8px; }
+.room-access-heading h3 { margin: 0; font-size: 16px; font-weight: 560; }
+.room-role { padding: 4px 6px; color: #d9f0a8; border: 1px solid rgba(217, 240, 168, .24); border-radius: 999px; text-transform: capitalize; font-size: 9px; }
+.room-access-role-copy { color: #9c9d98; font-size: 12px; }
+.room-invitation-state { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; gap: 9px; min-height: 52px; margin-top: 12px; border-bottom: 1px solid rgba(241, 240, 235, .13); }
+.room-invitation-state strong, .room-invitation-state small { display: block; }
+.room-invitation-state strong { font-size: 11px; }
+.room-invitation-state small { margin-top: 2px; color: #8a8d86; font-size: 9px; }
+.room-access-dot { width: 7px; height: 7px; border-radius: 50%; background: #d5a15e; }
+.room-access-dot.active { background: #9ed9ac; }
+.room-access-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.room-access-role-select { display: grid; gap: 5px; margin-top: 10px; color: #9c9d98; font-size: 9px; }
+.room-access-role-select select { min-height: 40px; padding: 7px 9px; border: 1px solid rgba(241, 240, 235, .16); border-radius: 4px; color: #f1f0eb; background: #0c0e0d; }
+.room-access-role-select select:focus-visible { outline: 2px solid #f4d58d; outline-offset: 2px; }
+.room-access-actions button,
+.room-access-confirm-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid rgba(241, 240, 235, .15);
+  border-radius: 4px;
+  color: #b2b3ae;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+}
+.room-access-actions button:disabled, .room-access-confirm-actions button:disabled { cursor: not-allowed; opacity: .48; }
+.room-access-actions button:focus-visible, .room-access-confirm-actions button:focus-visible { outline: 2px solid #f4d58d; outline-offset: 2px; }
+.room-access-notice { min-height: 14px; margin: 7px 0 0; color: #8a8d86; font-size: 9px; line-height: 1.4; }
+.room-access-confirm-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(5, 7, 6, .62); }
+.room-access-confirm { width: min(380px, 100%); padding: 22px; border: 1px solid rgba(241, 240, 235, .2); border-radius: 6px; outline: 0; background: #111312; box-shadow: 0 18px 70px rgba(0, 0, 0, .5); }
+.room-access-confirm h4 { margin: 0; font-size: 19px; font-weight: 560; }
+.room-access-confirm h4:focus { outline: 0; }
+.room-access-confirm p { color: #9c9d98; font-size: 12px; line-height: 1.5; }
+.room-access-confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 18px; }
+.room-access-confirm-actions .danger { color: #19100e; border-color: #e6b2a6; background: #e6b2a6; font-weight: 650; }
+
+@media (max-width: 520px) {
+  .arrival-overlay { align-items: end; padding: 10px; }
+  .arrival-veil { max-height: calc(100dvh - 20px); padding: 22px 18px; border-radius: 8px 8px 4px 4px; }
+  .arrival-actions { display: grid; }
+  .room-access-actions { grid-template-columns: 1fr; }
+  .room-access-confirm-actions { grid-template-columns: 1fr; }
+  .arrival-reconnecting { top: 102px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrival-overlay, .arrival-veil, .arrival-reconnecting, .room-access-confirm { scroll-behavior: auto; }
+}
+
+@media (forced-colors: active) {
+  .arrival-overlay, .arrival-veil, .room-access-confirm, .arrival-primary, .room-role { forced-color-adjust: auto; }
+}

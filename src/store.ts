@@ -1,8 +1,9 @@
 import {createMergeableStore} from 'tinybase';
 import {createIndexedDbPersister} from 'tinybase/persisters/persister-indexed-db';
-import {createPartyKitPersister} from 'tinybase/persisters/persister-partykit-client';
 import PartySocket from 'partysocket';
 import type {Profile} from './domain/protocol';
+import type {RoomAdmission} from './accessClient';
+import {attachWorkspaceTransport} from './workspaceTransport';
 
 export const store = createMergeableStore().setTablesSchema({
   tasks: {
@@ -29,18 +30,35 @@ export type WorkspaceConnection = {
   destroy: () => Promise<void>;
 };
 
-const partyHost = () =>
+export const clearWorkspaceCache = (room: string) => {
+  store.delTables();
+  if (!('indexedDB' in globalThis)) return;
+  indexedDB.deleteDatabase(`magma:${room}`);
+};
+
+export const partySocketHost = () =>
   import.meta.env.VITE_PARTYKIT_HOST || `${window.location.hostname}:1999`;
 
-export const connectWorkspace = async (room: string, profile: Profile): Promise<WorkspaceConnection> => {
+export const connectWorkspace = async (
+  room: string,
+  profile: Profile,
+  admission?: RoomAdmission,
+  refreshAdmission?: () => Promise<RoomAdmission>,
+): Promise<WorkspaceConnection> => {
   const local = createIndexedDbPersister(store, `magma:${room}`);
   await local.load();
   await local.startAutoSave();
 
+  let initialAdmission = admission;
   const socket = new PartySocket({
-    host: partyHost(),
+    host: partySocketHost(),
     room,
-    query: {
+    query: admission ? async () => {
+      const next = initialAdmission ?? await refreshAdmission?.();
+      initialAdmission = undefined;
+      if (!next) throw new Error('A fresh room admission is required');
+      return {admission: next.ticket};
+    } : {
       memberId: profile.memberId,
       name: profile.name,
       color: profile.color,
@@ -48,19 +66,13 @@ export const connectWorkspace = async (room: string, profile: Profile): Promise<
       intention: profile.intention,
     },
   });
-  const remote = createPartyKitPersister(store, socket, {
-    messagePrefix: 'tinybase:',
-    storeProtocol: window.location.protocol === 'https:' ? 'https' : 'http',
-  });
-
-  await remote.load().catch(() => undefined);
-  await remote.startAutoLoad();
-  await remote.startAutoSave();
+  const remote = attachWorkspaceTransport(store, socket, admission?.role !== 'guest');
 
   return {
     socket,
     destroy: async () => {
-      await Promise.all([local.destroy(), remote.destroy()]);
+      remote.destroy();
+      await local.destroy();
       socket.close();
     },
   };

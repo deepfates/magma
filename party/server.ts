@@ -1,5 +1,7 @@
 import type * as Party from 'partykit/server';
-import {TinyBasePartyKitServer} from 'tinybase/persisters/persister-partykit-server';
+import {createMergeableStore} from 'tinybase';
+import {hasStoreInStorage, loadStoreFromStorage, TinyBasePartyKitServer} from 'tinybase/persisters/persister-partykit-server';
+import type {MergeableChanges, MergeableContent, MergeableStore} from 'tinybase/mergeable-store';
 import {applyTimerCommand, applyTimerSettings, createTimer, normalizeTimer, settleElapsed, type TimerCommand, type TimerDurations, type TimerState} from '../src/domain/timer';
 import {applyMediaCommand, createMediaState, normalizeMediaState, type RoomMediaState} from '../src/domain/media';
 import {isClientMessage, type Participant, type Profile, type SessionArtifact, type TimerProposal} from '../src/domain/protocol';
@@ -8,8 +10,29 @@ import {
   MAX_HELD_SIGNALS, MAX_PORCH_MESSAGES, createPorchMessage, isFloor, normalizeHeldSignals, normalizePorchMessages,
   normalizeSocialRelease, ROOM_CUES, type PorchMessage, type PresenceChoice, type RoomCueId, type RoomSignal, type SocialReaction, type SocialRelease,
 } from '../src/domain/porch';
+import type {AuthRole} from '../src/domain/auth';
+import {
+  decodeWorkspaceChanges, encodeWorkspaceChanges, encodeWorkspaceSnapshot, hasWorkspaceChanges, MAX_WORKSPACE_MESSAGE_BYTES,
+} from '../src/workspaceTransport';
+import {
+  INTERNAL_ADMISSION_PATH,
+  RoomAccessController,
+  TRUSTED_DEVICE_HEADER,
+  TRUSTED_MEMBER_HEADER,
+  TRUSTED_ROLE_HEADER,
+  handleInternalAdmission,
+  partyAccessStorage,
+  validateAdmissionBeforeConnect,
+} from './access';
+import {handleAccessHttp} from './access-http';
 
-type Connection = Party.Connection<Participant>;
+type ConnectionState = Participant & {
+  accessMode: 'protected' | 'legacy-open';
+  deviceId: string | null;
+  role: AuthRole;
+  profileReady: boolean;
+};
+type Connection = Party.Connection<ConnectionState>;
 type ReactionEvent = SocialReaction;
 type RevisionBoundProposal = TimerProposal & {baseRevision: number; baseSessionId: string};
 type ClockSocialState = {
@@ -46,6 +69,52 @@ const ALLOWED_CELLS: Record<string, Set<string>> = {
 const MAX_MESSAGE_BYTES = 4_096;
 const MAX_HELD_REACTIONS = 32;
 const MAX_SOCIAL_NONCES = 128;
+const WORKSPACE_KEY = 'magma:workspace:v2';
+const MAX_WORKSPACE_ROWS_PER_TABLE = 256;
+const WORKSPACE_SCHEMA = {
+  tasks: {
+    text: {type: 'string'}, done: {type: 'boolean', default: false}, createdAt: {type: 'number'}, createdBy: {type: 'string'},
+    ownerId: {type: 'string', default: ''}, ownerName: {type: 'string', default: ''}, completedAt: {type: 'number', default: 0},
+  },
+  sparks: {
+    text: {type: 'string'}, authorId: {type: 'string'}, authorName: {type: 'string'}, emoji: {type: 'string'},
+    createdAt: {type: 'number'}, pinned: {type: 'boolean', default: false},
+  },
+} as const;
+const createWorkspaceStore = () => createMergeableStore().setTablesSchema(WORKSPACE_SCHEMA);
+const DEFAULT_ALLOWED_ORIGINS = ['https://magma-one-azure.vercel.app', 'http://localhost:5173', 'http://127.0.0.1:5173'];
+
+const allowedOrigins = (env: Record<string, unknown>) => new Set([
+  ...DEFAULT_ALLOWED_ORIGINS,
+  ...(typeof env.MAGMA_ALLOWED_ORIGINS === 'string' ? env.MAGMA_ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean) : []),
+]);
+
+const internalSecret = (env: Record<string, unknown>, _request: {url: string}) =>
+  typeof env.MAGMA_INTERNAL_SECRET === 'string' && env.MAGMA_INTERNAL_SECRET.length >= 32
+    ? env.MAGMA_INTERNAL_SECRET
+    : '';
+
+const withoutTrustedHeaders = (request: Party.Request) => {
+  const headers = new Headers();
+  request.headers.forEach((value, key) => {
+    if (![TRUSTED_MEMBER_HEADER, TRUSTED_DEVICE_HEADER, TRUSTED_ROLE_HEADER].includes(key.toLowerCase())) headers.append(key, value);
+  });
+  return new Request(request.url, {method: request.method, headers}) as unknown as Party.Request;
+};
+
+const isInviteCommand = (value: unknown): value is {type: 'access.invite.create'; nonce: string; role: 'steward' | 'member' | 'guest'; rotate: boolean} => {
+  if (!value || typeof value !== 'object') return false;
+  const command = value as Record<string, unknown>;
+  return command.type === 'access.invite.create'
+    && typeof command.nonce === 'string' && /^[A-Za-z0-9-]{8,80}$/.test(command.nonce)
+    && ['steward', 'member', 'guest'].includes(String(command.role))
+    && typeof command.rotate === 'boolean';
+};
+const isMemberRevokeCommand = (value: unknown): value is {type: 'access.member.revoke'; memberId: string} => {
+  if (!value || typeof value !== 'object') return false;
+  const command = value as Record<string, unknown>;
+  return command.type === 'access.member.revoke' && typeof command.memberId === 'string' && /^[A-Za-z0-9_-]{8,80}$/.test(command.memberId);
+};
 
 const text = (value: unknown, max: number) =>
   typeof value === 'string' ? value.trim().slice(0, max) : '';
@@ -53,7 +122,7 @@ const text = (value: unknown, max: number) =>
 const sanitizeProfile = (value: Profile): Profile | null => {
   const memberId = text(value.memberId, 64);
   const name = text(value.name, 32);
-  if (!/^[a-zA-Z0-9-]{8,64}$/.test(memberId) || !name) return null;
+  if (!/^[a-zA-Z0-9_-]{8,64}$/.test(memberId) || !name) return null;
   return {
     memberId,
     name,
@@ -69,6 +138,18 @@ const validDurations = (value: TimerDurations): TimerDurations | null => {
 };
 
 export default class MagmaRoom extends TinyBasePartyKitServer {
+  static async onBeforeConnect(request: Party.Request, lobby: Party.Lobby): Promise<Party.Request | Response> {
+    const clean = withoutTrustedHeaders(request);
+    const status = await lobby.parties.main.get(lobby.id).fetch('/access/status');
+    if (!status.ok) return new Response('Room access unavailable', {status: 503});
+    const body = await status.json() as {classification?: unknown};
+    if (body.classification === 'legacy-open') return clean;
+    if (!['protected', 'unclaimed'].includes(String(body.classification))) return new Response('Room access unavailable', {status: 503});
+    const secret = internalSecret(lobby.env, request);
+    if (!secret) return new Response('Private room admission is not configured', {status: 503});
+    return validateAdmissionBeforeConnect(clean, lobby, {partyName: 'main', internalSecret: secret}) as Promise<Party.Request | Response>;
+  }
+
   private timer: TimerState = createTimer();
   private artifacts: SessionArtifact[] = [];
   private phaseParticipants: SessionArtifact['participants'] = [];
@@ -88,10 +169,14 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   private reactionCounts: Record<string, number> = {};
   private signalTimes = new Map<string, number[]>();
   private roomSignalTimes: number[] = [];
+  private readonly access: RoomAccessController;
+  private readonly workspace = createWorkspaceStore();
+  private workspaceQueue: Promise<void> = Promise.resolve();
 
   constructor(readonly room: Party.Room) {
     super(room);
     this.config.messagePrefix = 'tinybase:';
+    this.access = new RoomAccessController(partyAccessStorage(room.storage), room.id);
   }
 
   async onStart() {
@@ -108,21 +193,42 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     this.socialRelease = normalizeSocialRelease(await this.room.storage.get(SOCIAL_RELEASE_KEY));
     this.signalCounts = this.normalizeSignalCounts(await this.room.storage.get(SIGNAL_COUNTS_KEY));
     this.reactionCounts = this.normalizeReactionCounts(await this.room.storage.get(REACTION_COUNTS_KEY));
+    const workspace = await this.room.storage.get<MergeableContent>(WORKSPACE_KEY);
+    if (workspace) this.workspace.applyMergeableChanges(workspace);
+    else if (await hasStoreInStorage(this.room.storage)) {
+      this.workspace.setContent(await loadStoreFromStorage(this.room.storage));
+      await this.room.storage.put(WORKSPACE_KEY, this.workspace.getMergeableContent());
+    }
     await this.settleTimer('server');
     await this.scheduleAlarm();
   }
 
   async onConnect(connection: Connection, context: Party.ConnectionContext) {
     const url = new URL(context.request.url);
-    const profile = sanitizeProfile({
-      memberId: url.searchParams.get('memberId') ?? '',
-      name: url.searchParams.get('name') ?? '',
-      color: url.searchParams.get('color') ?? '',
-      emoji: url.searchParams.get('emoji') ?? '',
+    const trustedMembershipId = context.request.headers.get(TRUSTED_MEMBER_HEADER);
+    const trustedDeviceId = context.request.headers.get(TRUSTED_DEVICE_HEADER);
+    const trustedRole = context.request.headers.get(TRUSTED_ROLE_HEADER) as AuthRole | null;
+    const protectedConnection = Boolean(trustedMembershipId && trustedDeviceId && trustedRole
+      && ['owner', 'steward', 'member', 'guest'].includes(trustedRole));
+    const legacyProfile = protectedConnection ? null : sanitizeProfile({
+      memberId: url.searchParams.get('memberId') ?? '', name: url.searchParams.get('name') ?? '',
+      color: url.searchParams.get('color') ?? '', emoji: url.searchParams.get('emoji') ?? '',
       intention: url.searchParams.get('intention') ?? '',
     });
     await this.enqueueRoomMutation(async () => {
+      if (protectedConnection && !(await this.access.validateClaims({
+        membershipId: trustedMembershipId!,
+        deviceId: trustedDeviceId!,
+        role: trustedRole!,
+      }))) {
+        connection.send(JSON.stringify({type: 'access.revoked'}));
+        connection.close(4003, 'Room access revoked');
+        return;
+      }
       await this.settleTimer('server');
+      const profile = protectedConnection ? {
+        memberId: trustedMembershipId!, name: '', color: '#9d8cff', emoji: '🫧', intention: '',
+      } : legacyProfile;
       if (profile) {
         const memberState = this.memberState(profile.memberId, connection.id);
         connection.setState({
@@ -131,23 +237,36 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
           joinedAt: memberState?.joinedAt ?? Date.now(),
           connections: 1,
           presence: memberState?.presence ?? 'here',
+          accessMode: protectedConnection ? 'protected' : 'legacy-open',
+          deviceId: protectedConnection ? trustedDeviceId : null,
+          role: protectedConnection ? trustedRole! : 'member',
+          profileReady: !protectedConnection,
         });
         this.ensureHost();
-        if (this.isActiveRunningPhase()) await this.rememberPhaseParticipant(profile);
+        if (!protectedConnection && this.isActiveRunningPhase()) await this.rememberPhaseParticipant(profile);
       }
+      await this.ensureWorkspaceStore();
       connection.send(JSON.stringify(this.snapshot()));
+      connection.send(encodeWorkspaceSnapshot(this.workspace.getMergeableContent()));
       this.broadcastSnapshot();
     });
   }
 
   async onMessage(message: string, connection: Connection) {
-    if (typeof message !== 'string' || message.length > MAX_MESSAGE_BYTES || !this.withinRateLimit(connection.id)) {
+    if (typeof message !== 'string') return;
+    const workspaceMessage = message.startsWith('tinybase:');
+    const maxBytes = workspaceMessage ? MAX_WORKSPACE_MESSAGE_BYTES : MAX_MESSAGE_BYTES;
+    if (new TextEncoder().encode(message).byteLength > maxBytes || !this.withinRateLimit(connection.id, workspaceMessage ? 120 : 40)) {
       connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'That room message was rejected.'}));
       return;
     }
-    if (message.startsWith('tinybase:')) {
-      if (!connection.state) return;
-      await super.onMessage(message, connection);
+    if (workspaceMessage) {
+      if (!connection.state || connection.state.role === 'guest') return;
+      const changes = decodeWorkspaceChanges(message);
+      if (!changes) return;
+      const operation = this.workspaceQueue.then(() => this.mergeWorkspaceChanges(changes, connection));
+      this.workspaceQueue = operation.catch(() => undefined);
+      await operation;
       return;
     }
 
@@ -155,6 +274,42 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     try {
       parsed = JSON.parse(message);
     } catch {
+      return;
+    }
+    if (isInviteCommand(parsed)) {
+      const actor = connection.state;
+      if (!actor?.deviceId || actor.accessMode !== 'protected') return;
+      const invitation = await this.access.createInvite(actor.deviceId, {
+        role: parsed.role,
+        maxUses: 8,
+        expiresAt: Date.now() + 7 * 24 * 60 * 60_000,
+        rotate: parsed.rotate,
+        operationNonce: parsed.nonce,
+      });
+      connection.send(JSON.stringify(invitation.ok
+        ? {type: 'access.invite.created', nonce: parsed.nonce, ...invitation.value, role: parsed.role}
+        : {type: 'access.invite.rejected', nonce: parsed.nonce, reason: invitation.reason}));
+      return;
+    }
+    if (isMemberRevokeCommand(parsed)) {
+      await this.enqueueRoomMutation(async () => {
+        const actor = connection.state;
+        const targets = Array.from(this.room.getConnections<ConnectionState>())
+          .filter((candidate) => candidate.state?.accessMode === 'protected' && candidate.state.memberId === parsed.memberId);
+        if (!actor?.deviceId || actor.accessMode !== 'protected') return;
+        const revoked = await this.access.revokeMembership(actor.deviceId, parsed.memberId);
+        if (!revoked.ok) {
+          connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'That member could not be removed.'}));
+          return;
+        }
+        for (const target of targets) {
+          target.send(JSON.stringify({type: 'access.revoked'}));
+          target.setState(null);
+        }
+        this.ensureHost();
+        this.broadcastSnapshot();
+        for (const target of targets) target.close(4003, 'Room access revoked');
+      });
       return;
     }
     if (!isClientMessage(parsed)) return;
@@ -169,17 +324,23 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       if (!profile) return;
       await this.enqueueRoomMutation(async () => {
         await this.settleTimer('server');
-        const memberState = this.memberState(profile.memberId, connection.id);
-        const currentState = connection.state?.memberId === profile.memberId ? connection.state : null;
+        const protectedMemberId = connection.state?.accessMode === 'protected' ? connection.state.memberId : null;
+        const acceptedProfile = protectedMemberId ? {...profile, memberId: protectedMemberId} : profile;
+        const memberState = this.memberState(acceptedProfile.memberId, connection.id);
+        const currentState = connection.state?.memberId === acceptedProfile.memberId ? connection.state : null;
         connection.setState({
-          ...profile,
+          ...acceptedProfile,
           connectionId: connection.id,
           joinedAt: currentState?.joinedAt ?? memberState?.joinedAt ?? Date.now(),
           connections: 1,
           presence: currentState?.presence ?? memberState?.presence ?? 'here',
+          accessMode: currentState?.accessMode ?? 'legacy-open',
+          deviceId: currentState?.deviceId ?? null,
+          role: currentState?.role ?? 'member',
+          profileReady: true,
         });
         this.ensureHost();
-        if (this.isActiveRunningPhase()) await this.rememberPhaseParticipant(profile);
+        if (this.isActiveRunningPhase()) await this.rememberPhaseParticipant(acceptedProfile);
         this.broadcastSnapshot();
       });
       return;
@@ -363,6 +524,20 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       await this.scheduleAlarm();
       this.broadcastSnapshot();
     });
+  }
+
+  async onRequest(request: Party.Request) {
+    const standardRequest = request as unknown as Request;
+    const internal = await handleInternalAdmission(standardRequest, this.access, internalSecret(this.room.env, request));
+    if (internal) return internal;
+    const access = await handleAccessHttp(standardRequest, this.access, allowedOrigins(this.room.env));
+    if (access) return access;
+    // TinyBase's default HTTP bootstrap endpoint is intentionally not exposed;
+    // authenticated sockets receive and merge the workspace snapshot instead.
+    if (new URL(request.url).pathname.endsWith(this.config.storePath ?? '/store')) {
+      return new Response('Not found', {status: 404, headers: {'cache-control': 'no-store'}});
+    }
+    return new Response('Not found', {status: 404});
   }
 
   onClose(connection: Connection) {
@@ -572,7 +747,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   }
 
   private resetReadyPresence() {
-    for (const connection of this.room.getConnections<Participant>()) {
+    for (const connection of this.room.getConnections<ConnectionState>()) {
       if (connection.state?.presence === 'ready') connection.setState({...connection.state, presence: 'here'});
     }
   }
@@ -591,21 +766,25 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
 
   private uniqueParticipants(): Participant[] {
     const byMember = new Map<string, Participant>();
-    for (const connection of this.room.getConnections<Participant>()) {
+    for (const connection of this.room.getConnections<ConnectionState>()) {
       const participant = connection.state;
-      if (!participant) continue;
+      if (!participant?.profileReady) continue;
       const existing = byMember.get(participant.memberId);
       if (existing) existing.connections += 1;
-      else byMember.set(participant.memberId, {...participant, connections: 1});
+      else byMember.set(participant.memberId, {
+        memberId: participant.memberId, name: participant.name, color: participant.color, emoji: participant.emoji,
+        intention: participant.intention, connectionId: participant.connectionId, joinedAt: participant.joinedAt,
+        connections: 1, presence: participant.presence, role: participant.role,
+      });
     }
     return [...byMember.values()].sort((a, b) => a.joinedAt - b.joinedAt);
   }
 
   private ensureHost(excludedConnectionId?: string) {
-    const connections = Array.from(this.room.getConnections<Participant>()).filter((connection) => connection.id !== excludedConnectionId && connection.state);
+    const connections = Array.from(this.room.getConnections<ConnectionState>()).filter((connection) => connection.id !== excludedConnectionId && connection.state?.profileReady);
     if (this.hostMemberId && connections.some((connection) => connection.state!.memberId === this.hostMemberId)) return;
-    const next = Array.from(this.room.getConnections<Participant>())
-      .filter((connection) => connection.id !== excludedConnectionId && connection.state)
+    const next = Array.from(this.room.getConnections<ConnectionState>())
+      .filter((connection) => connection.id !== excludedConnectionId && connection.state?.profileReady)
       .sort((a, b) => a.state!.joinedAt - b.state!.joinedAt)[0];
     this.hostMemberId = next?.state?.memberId ?? null;
   }
@@ -616,7 +795,7 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   }
 
   private memberState(memberId: string, excludedConnectionId?: string) {
-    return Array.from(this.room.getConnections<Participant>())
+    return Array.from(this.room.getConnections<ConnectionState>())
       .filter((candidate) => candidate.id !== excludedConnectionId && candidate.state?.memberId === memberId)
       .sort((a, b) => a.state!.joinedAt - b.state!.joinedAt)[0]?.state ?? null;
   }
@@ -720,12 +899,137 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     this.room.broadcast(JSON.stringify(this.snapshot()));
   }
 
-  private withinRateLimit(connectionId: string) {
+  private withinRateLimit(connectionId: string, limit: number) {
     const now = Date.now();
     const recent = (this.messageTimes.get(connectionId) ?? []).filter((timestamp) => timestamp > now - 10_000);
     recent.push(now);
     this.messageTimes.set(connectionId, recent);
-    return recent.length <= 40;
+    return recent.length <= limit;
+  }
+
+  private async ensureWorkspaceStore() {
+    if (await this.room.storage.get<MergeableContent>(WORKSPACE_KEY)) return;
+    if (await hasStoreInStorage(this.room.storage) && this.workspace.getTableIds().length === 0) {
+      this.workspace.setContent(await loadStoreFromStorage(this.room.storage));
+    }
+    await this.room.storage.put(WORKSPACE_KEY, this.workspace.getMergeableContent());
+  }
+
+  private validWorkspace(workspace: MergeableStore) {
+    if (workspace.getValueIds().length > 0) return false;
+    const allowedTables = new Set(['tasks', 'sparks']);
+    if (workspace.getTableIds().some((tableId) => !allowedTables.has(tableId))) return false;
+    for (const tableId of workspace.getTableIds()) {
+      const rowIds = workspace.getRowIds(tableId);
+      if (rowIds.length > MAX_WORKSPACE_ROWS_PER_TABLE || rowIds.some((rowId) => rowId.length > 80)) return false;
+      for (const rowId of rowIds) {
+        for (const cellId of workspace.getCellIds(tableId, rowId)) {
+          const value = workspace.getCell(tableId, rowId, cellId);
+          const validator = ALLOWED_CELLS[tableId]?.has(cellId)
+            && (tableId === 'tasks'
+              ? ({
+                  text: typeof value === 'string' && value.length <= 160,
+                  done: typeof value === 'boolean',
+                  createdAt: typeof value === 'number' && Number.isFinite(value),
+                  createdBy: typeof value === 'string' && value.length <= 40,
+                  ownerId: typeof value === 'string' && value.length <= 64,
+                  ownerName: typeof value === 'string' && value.length <= 40,
+                  completedAt: typeof value === 'number' && Number.isFinite(value),
+                } as Record<string, boolean>)[cellId]
+              : ({
+                  text: typeof value === 'string' && value.length <= 500,
+                  authorId: typeof value === 'string' && value.length <= 64,
+                  authorName: typeof value === 'string' && value.length <= 40,
+                  emoji: typeof value === 'string' && value.length <= 8,
+                  createdAt: typeof value === 'number' && Number.isFinite(value),
+                  pinned: typeof value === 'boolean',
+                } as Record<string, boolean>)[cellId]);
+          if (!validator) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  private canonicalizeWorkspace(candidate: MergeableStore, actor: ConnectionState) {
+    const now = Date.now();
+    const originalTaskIds = new Set(this.workspace.getRowIds('tasks'));
+    for (const rowId of candidate.getRowIds('tasks')) {
+      const original = originalTaskIds.has(rowId) ? this.workspace.getRow('tasks', rowId) : null;
+      if (!original) {
+        candidate.setCell('tasks', rowId, 'createdAt', now);
+        candidate.setCell('tasks', rowId, 'createdBy', actor.name);
+        const claimed = candidate.getCell('tasks', rowId, 'ownerId');
+        candidate.setCell('tasks', rowId, 'ownerId', claimed === '' ? '' : actor.memberId);
+        candidate.setCell('tasks', rowId, 'ownerName', claimed === '' ? '' : actor.name);
+        candidate.setCell('tasks', rowId, 'completedAt', candidate.getCell('tasks', rowId, 'done') === true ? now : 0);
+        continue;
+      }
+      candidate.setCell('tasks', rowId, 'createdAt', original.createdAt);
+      candidate.setCell('tasks', rowId, 'createdBy', original.createdBy);
+      const originalOwner = String(original.ownerId ?? '');
+      const requestedOwner = String(candidate.getCell('tasks', rowId, 'ownerId') ?? '');
+      if (requestedOwner !== originalOwner) {
+        const acceptedOwner = requestedOwner === '' || requestedOwner === actor.memberId ? requestedOwner : originalOwner;
+        candidate.setCell('tasks', rowId, 'ownerId', acceptedOwner);
+        candidate.setCell('tasks', rowId, 'ownerName', acceptedOwner === '' ? '' : acceptedOwner === actor.memberId ? actor.name : original.ownerName);
+      } else {
+        candidate.setCell('tasks', rowId, 'ownerName', original.ownerName);
+      }
+      if (candidate.getCell('tasks', rowId, 'done') !== original.done) {
+        candidate.setCell('tasks', rowId, 'completedAt', candidate.getCell('tasks', rowId, 'done') === true ? now : 0);
+      } else {
+        candidate.setCell('tasks', rowId, 'completedAt', original.completedAt);
+      }
+    }
+
+    const originalSparkIds = new Set(this.workspace.getRowIds('sparks'));
+    for (const rowId of originalSparkIds) {
+      if (candidate.hasRow('sparks', rowId)) continue;
+      const original = this.workspace.getRow('sparks', rowId);
+      if (original.authorId !== actor.memberId && !['owner', 'steward'].includes(actor.role)) {
+        candidate.setRow('sparks', rowId, original);
+      }
+    }
+    for (const rowId of candidate.getRowIds('sparks')) {
+      const original = originalSparkIds.has(rowId) ? this.workspace.getRow('sparks', rowId) : null;
+      if (!original) {
+        candidate.setCell('sparks', rowId, 'authorId', actor.memberId);
+        candidate.setCell('sparks', rowId, 'authorName', actor.name);
+        candidate.setCell('sparks', rowId, 'emoji', actor.emoji);
+        candidate.setCell('sparks', rowId, 'createdAt', now);
+        continue;
+      }
+      candidate.setCell('sparks', rowId, 'text', original.text);
+      candidate.setCell('sparks', rowId, 'authorId', original.authorId);
+      candidate.setCell('sparks', rowId, 'authorName', original.authorName);
+      candidate.setCell('sparks', rowId, 'emoji', original.emoji);
+      candidate.setCell('sparks', rowId, 'createdAt', original.createdAt);
+    }
+  }
+
+  private async mergeWorkspaceChanges(changes: MergeableChanges, connection: Connection) {
+    const candidate = createWorkspaceStore();
+    candidate.applyMergeableChanges(this.workspace.getMergeableContent());
+    candidate.applyMergeableChanges(changes);
+    if (!this.validWorkspace(candidate)) {
+      connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'That workspace change was rejected.'}));
+      return;
+    }
+    if (!connection.state?.profileReady) return;
+    this.canonicalizeWorkspace(candidate, connection.state);
+    // Restamp the accepted plain content in the room authority so hostile or
+    // far-future client clocks cannot permanently dominate the CRDT.
+    const content = candidate.getContent();
+    let accepted: MergeableChanges = [[{}], [{}], 1];
+    const listener = this.workspace.addDidFinishTransactionListener(() => {
+      accepted = this.workspace.getTransactionMergeableChanges();
+    });
+    this.workspace.setContent(content);
+    this.workspace.delListener(listener);
+    if (!hasWorkspaceChanges(accepted)) return;
+    await this.room.storage.put(WORKSPACE_KEY, this.workspace.getMergeableContent());
+    this.room.broadcast(encodeWorkspaceChanges(accepted));
   }
 }
 

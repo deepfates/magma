@@ -3,6 +3,8 @@ import MagmaRoom from '../../party/server';
 import {applyTimerCommand, createTimer, type TimerState} from './timer';
 import type {Participant, Profile, RoomSnapshot, SessionArtifact} from './protocol';
 import type {SocialRelease} from './porch';
+import {createMergeableStore} from 'tinybase';
+import {contentAsChanges, decodeWorkspaceSnapshot, encodeWorkspaceChanges} from '../workspaceTransport';
 
 const TIMER_KEY = 'magma:timer';
 const ARTIFACTS_KEY = 'magma:artifacts';
@@ -90,6 +92,7 @@ class FakeRoom {
   readonly storage = new FakeStorage();
   readonly connections: FakeConnection[] = [];
   readonly broadcasts: Array<Record<string, unknown>> = [];
+  readonly rawBroadcasts: string[] = [];
   readonly id = 'test-room';
   readonly internalID = 'test-room';
   readonly name = 'main';
@@ -102,7 +105,9 @@ class FakeRoom {
   }
 
   broadcast(message: string | ArrayBuffer | ArrayBufferView) {
-    if (typeof message === 'string') this.broadcasts.push(JSON.parse(message) as Record<string, unknown>);
+    if (typeof message !== 'string') return;
+    if (message.startsWith('tinybase:')) this.rawBroadcasts.push(message);
+    else this.broadcasts.push(JSON.parse(message) as Record<string, unknown>);
   }
 }
 
@@ -361,5 +366,77 @@ describe('Magma room deadline and restart invariants', () => {
     }
 
     expect(room.broadcasts.filter((message) => message.type === 'reaction')).toHaveLength(24);
+  });
+});
+
+describe('authenticated durable workspace authority', () => {
+  it('accepts stamped client work, rebroadcasts canonical changes, and restores a snapshot after restart', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const author = new FakeConnection('author-tab');
+    await connect(server, room, author, profile('author-member', 'Author'));
+    const local = createMergeableStore();
+    local.setCell('tasks', 'task-one', 'text', 'Converge honestly');
+
+    await server.onMessage(encodeWorkspaceChanges(contentAsChanges(local.getMergeableContent())), author as never);
+    expect(room.rawBroadcasts).toHaveLength(1);
+    expect(await room.storage.get('magma:workspace:v2')).toBeDefined();
+
+    const restarted = new MagmaRoom(room as never);
+    await restarted.onStart();
+    const returning = new FakeConnection('returning-tab');
+    await connect(restarted, room, returning, profile('returning-member', 'Returning'));
+    const snapshotMessage = returning.sent.find((message) => message.type === 'workspace.snapshot');
+    const snapshot = decodeWorkspaceSnapshot(JSON.stringify(snapshotMessage));
+    const replica = createMergeableStore();
+    replica.applyMergeableChanges(snapshot!);
+    expect(replica.getCell('tasks', 'task-one', 'text')).toBe('Converge honestly');
+  });
+
+  it('keeps guests read-only and never exposes the old HTTP store endpoint', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const guest = new FakeConnection('guest-tab');
+    await connect(server, room, guest, profile('guest-member', 'Guest'));
+    (guest.state as unknown as {role: string}).role = 'guest';
+    const local = createMergeableStore();
+    local.setCell('sparks', 'guest-spark', 'text', 'Must not publish');
+    await server.onMessage(encodeWorkspaceChanges(contentAsChanges(local.getMergeableContent())), guest as never);
+    expect(room.rawBroadcasts).toEqual([]);
+    expect(await server.onRequest(new Request('https://example.test/store') as never)).toMatchObject({status: 404});
+  });
+
+  it('stamps workspace authorship from the authenticated participant instead of client claims', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const author = new FakeConnection('honest-author-tab');
+    await connect(server, room, author, profile('author-member', 'Actual Author'));
+    const forged = createMergeableStore();
+    forged.setRow('sparks', 'forged-spark', {
+      text: 'The thought itself is accepted',
+      authorId: 'another-member',
+      authorName: 'Someone Else',
+      emoji: '🕵️',
+      createdAt: 1,
+      pinned: false,
+    });
+
+    await server.onMessage(encodeWorkspaceChanges(contentAsChanges(forged.getMergeableContent())), author as never);
+    const returning = new FakeConnection('reader-tab');
+    await connect(server, room, returning, profile('reader-member', 'Reader'));
+    const snapshotMessage = returning.sent.find((message) => message.type === 'workspace.snapshot');
+    const snapshot = decodeWorkspaceSnapshot(JSON.stringify(snapshotMessage));
+    const replica = createMergeableStore();
+    replica.applyMergeableChanges(snapshot!);
+    expect(replica.getRow('sparks', 'forged-spark')).toMatchObject({
+      text: 'The thought itself is accepted',
+      authorId: 'author-member',
+      authorName: 'Actual Author',
+      emoji: '🫧',
+    });
+    expect(replica.getCell('sparks', 'forged-spark', 'createdAt')).toBeGreaterThan(1);
   });
 });
