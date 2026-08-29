@@ -118,6 +118,27 @@ test('everyone can tune the shared window while glass and sound remain personal'
   await Promise.all([firstContext.close(), secondContext.close()]);
 });
 
+test('one person can keep the porch open in two tabs without losing their messages', async ({browser}) => {
+  const room = `tabs-${crypto.randomUUID()}`;
+  const context = await browser.newContext();
+  await blockRemoteMedia(context);
+  const first = await context.newPage();
+  await first.goto(`/?room=${room}`);
+  await expect(first.getByRole('button', {name: /1 here/})).toBeVisible();
+
+  const second = await context.newPage();
+  await second.goto(`/?room=${room}`);
+  await expect(second.getByRole('button', {name: /1 here/})).toBeVisible();
+  await second.getByRole('button', {name: 'Talk', exact: true}).click();
+  await second.getByLabel('Write to the room').fill('Same person, another window');
+  await second.getByRole('button', {name: 'Send', exact: true}).click();
+  await expect(second.getByRole('log', {name: 'Room messages'})).toContainText('Same person, another window');
+
+  await first.getByRole('button', {name: /1 here/}).click();
+  await expect(first.getByRole('log', {name: 'Room messages'})).toContainText('Same person, another window');
+  await context.close();
+});
+
 test('the porch fits a phone and its primary controls have no serious accessibility violations', async ({browser}) => {
   const context = await browser.newContext({viewport: {width: 390, height: 844}});
   await blockRemoteMedia(context);

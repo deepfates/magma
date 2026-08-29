@@ -170,6 +170,10 @@ export const useRoom = (
             setPorchMessages((current) => current.some((item) => item.id === incoming.id) ? current : [...current, incoming].slice(-80));
           }
           if (data.type === 'porch.accepted' && typeof data.nonce === 'string') {
+            if (data.message) {
+              const incoming = data.message as PorchMessage;
+              setPorchMessages((current) => current.some((item) => item.id === incoming.id) ? current : [...current, incoming].slice(-80));
+            }
             const pending = pendingPorchMessages.current.get(data.nonce);
             if (pending) {
               pendingPorchMessages.current.delete(data.nonce);
