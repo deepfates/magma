@@ -186,11 +186,13 @@ Production has reproducible client and room deployment, source health/fallback b
 - Excalidraw/Yjs glass with notes, freehand drawing, selection, movement, deletion, local undo mechanics, convergence, and persistence.
 - Shared clock start, pause, and reset.
 - Durable room chat and personal glass, video mute, Glow/Quiet, and warm-noise choices.
+- Versioned authoritative room-state storage with atomic migration from existing production keys, an exact rollback backup, legacy dual-write, and visible no-write rejection of unknown future schemas.
 
 ### Actually exercised
 
 - Separate Chromium contexts create a note, converge, move it from the other context, reload it, and delete it from the other context.
 - Protected-room creation, invitation, device-proof return, invitation by a second person, and a third person's convergent note.
+- Repeated forced protected-canvas socket reconnect obtains a distinct one-time admission ticket, retains the same two-person presence and scene, and permits one subsequent edit from each person without duplicate elements.
 - Either person starts and pauses the clock, changes the selected YouTube source, adds a playlist URL, and writes durable chat.
 - One person's glass visibility, mute, and Glow choice remain local; same-device tabs retain accepted chat.
 - A 390x844 browser creates a note without document overflow; the surrounding primary controls pass the retained automated accessibility inspection.
@@ -202,7 +204,7 @@ Production has reproducible client and room deployment, source health/fallback b
 - Reactions, presence choices, session cues, Block aims, ambient cue controls, and richer focus machinery remain in code from earlier versions but are not composed into the current Porch.
 - Media sync exists for YouTube intent, but there is no general scene model, radio layer, overlay layer, health model, or source adapter contract.
 - Excalidraw supplies more object mechanics than the Porch shelf exposes; live collaborator cursors, durable asset handling, links/documents, and Porch-level restore/export are unfinished.
-- Protected canvas reload obtains a new ticket, but socket reconnect currently reuses a consumed one-time admission ticket and can fail until `mag-z6jr` lands.
+- Physical network-loss recovery remains unexercised because Chromium offline emulation did not close an already-established websocket; deterministic page-side websocket closure proves the reconnect path itself.
 - Freehand drawing, multiplayer undo ownership, pan/zoom continuity, canvas accessibility, PartyKit actor restart recovery, and actual external media playback are implemented or plausible at engine level but not yet exercised as product claims.
 - Chat is durable but has no replies, reactions, spatial pinning, or voice.
 - The clock is synchronized but does not implement the choose/finish-line/Block/mark/break loop.
@@ -213,7 +215,7 @@ Production has reproducible client and room deployment, source health/fallback b
 - Rich artifact/asset pipeline and placeable media, focus, sound, or future objects.
 - Room timeline, object restoration, scheduled future items, and saved Porch setups.
 - Integrated soundboard/local mixer and camera-free voice.
-- Offline artifact edits, explicit schema migrations across all room state, source observability/fallback receipts, and installable PWA behavior.
+- Offline artifact edits, source observability/fallback receipts, and installable PWA behavior.
 
 ## Delivery map
 

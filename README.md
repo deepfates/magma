@@ -34,6 +34,7 @@ The complete requested product space, current capability boundary, and dependenc
 - Lazy editor loading after the Porch admission threshold; the arrival surface does not import or mount the canvas engine.
 - Any admitted person can create, edit, move, and delete canvas objects; operate the clock; choose the shared media source; write in the room; and create another invitation.
 - PartyKit authorities for room admission, people/chat, the shared clock, and media intent. Wall time and playback remain outside document history because they are temporal state, not canvas edits.
+- A versioned authoritative room-state envelope migrates existing production keys atomically, retains an exact rollback backup, rejects unknown future schemas without writing, and dual-writes the legacy keys during the rollback window.
 - Local-only glass visibility, Glow/Quiet presentation, mute, volume, and synthesized warm sound.
 - Existing TinyBase task and spark tables retained for non-destructive migration. They are not a second canvas or collaboration model.
 
@@ -64,6 +65,7 @@ The automated browser journeys use separate isolated Chromium contexts and real 
 - either person starting and pausing the shared clock;
 - either person changing the shared live window, adding a YouTube playlist, and writing in room chat while glass, mute, and atmosphere choices remain local;
 - protected-room creation, invitation, device-proof return, invitation by a second person, and a third person's convergent note;
+- repeated protected-canvas socket closure, fresh one-time admission on each reconnect, retained presence and scene, and subsequent editing by both people without duplicate elements;
 - a phone viewport and accessibility inspection of the primary Porch controls.
 
 A separate hands-on browser pass kept the canvas open for ten seconds, created a note through the visible surface, observed it in a second session, moved and deleted it from there, then created another note and verified it after reload. The complete canvas reload story was also repeated three times concurrently to falsify the initialization race that the first implementation missed.
