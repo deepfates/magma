@@ -80,6 +80,9 @@ Magma 1.0 is not video chat, a public community-discovery network, a creator bro
 - The first member present holds timer authority across all of their tabs. Everyone else can propose a timer change; the host can approve it or pass the crown, and host loss triggers a deterministic handoff. Shared media is democratic: every connected participant can steer it.
 - Focus completion creates a durable room “ember,” sounds a synthesized local chime, and can automatically begin the shared break. The latest 24 artifacts survive reloads.
 - People have stable local profiles and intentions. Tasks support ownership, while CRDT note cards (“sparks”) let the room communicate without breaking focus.
+- The Room surface now has the first Porch loop: explicit Here/Ready/Away presence; a bounded server-authored conversation that is completely hidden while the Floor is active and opens at the break; and one-click promotion of a useful Porch line into a durable CRDT Spark. A sender keeps their draft until the server acknowledges the exact operation. Porch conversation is cleared when the next focus begins.
+- Emoji reactions and semantic room signals are phase-aware. During focus they produce no recipient event, badge, sound, or animation; successful completion commits one aggregate release with the Ember and offers connected clients one restrained bloom. Reconnect recovers that release as calm Porch text without replaying transient motion or sound. During gathering and breaks signals arrive immediately. Peer audio is a separate local opt-in, off by default, and traffic is limited per member and per room.
+- A manual reset, mode change, or cadence change aborts the Floor into gathering: accepted words become visible, while transient reactions and signals are discarded rather than presented as a completed-Block celebration.
 - Tasks and sparks live in a TinyBase `MergeableStore`, persist to IndexedDB, and synchronize through the same room. Server-side schemas, message caps, and rate limits constrain writes.
 - Warm noise is synthesized locally with Web Audio. Wake Lock and opt-in completion notifications are progressive enhancements; no audio assets or tracking services are bundled.
 - A dominant living view opens on the Treasure Island panorama from Mersea/Teleport and also accepts ABC7’s Treasure Island camera, TrazCam, NASA’s ISS feed, and standard YouTube video or playlist links. Any participant can change the shared source or transport; it converges across browsers and survives reconnects. Instrument mode cover-crops the embed; Camera Controls clears the instrument and exposes shared playback controls.
@@ -98,7 +101,7 @@ Magma intentionally has less productivity machinery than its atmosphere might su
 4. At completion, personally decide whether the Block counted. A compromised Block can be released without pretending the work did not happen.
 5. Keep only a daily tally. Begin again tomorrow without streak debt.
 
-The cue deck follows the same boundary. Signals are authored and previewable, audio is off until chosen, and “quiet everything” is a complete setup. Magma is an instrument a person operates, not an optimizer that operates on the person.
+The cue deck follows the same boundary. Signals carry shared meaning while each receiver chooses sound or silence, audio is off until chosen, and “quiet everything” is a complete setup. Magma is an instrument a person operates, not an optimizer that operates on the person.
 
 ## Interface laws and reuse boundaries
 
@@ -120,7 +123,7 @@ Open the same URL (including its `?room=` value) in two browser windows. The web
 npm run check
 ```
 
-This runs timer/media state-machine and YouTube URL tests, TypeScript, a production build, and real Chromium multiplayer tests covering timer authority across tabs, CRDT convergence, reconnect durability, host handoff, server-alarm completion, one-time Block accounting, two-way media control and convergence, personal-preference isolation, surface continuity across posture changes, phone layout, and automated accessibility checks.
+This runs timer/media/Porch state-machine and YouTube URL tests, deterministic room-authority restart and deadline tests, TypeScript, a production build, and real Chromium multiplayer tests covering timer authority across tabs, CRDT convergence, reconnect durability, host handoff, server-alarm completion, the Floor attention firewall, Porch acknowledgement/release and Spark promotion, phase-aware reactions and signals, one-time Block accounting, two-way media control and convergence, personal-preference isolation, surface continuity across posture changes, phone layout, and automated accessibility checks.
 
 ## Put rooms online
 

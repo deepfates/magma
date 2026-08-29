@@ -1,0 +1,365 @@
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import MagmaRoom from '../../party/server';
+import {applyTimerCommand, createTimer, type TimerState} from './timer';
+import type {Participant, Profile, RoomSnapshot, SessionArtifact} from './protocol';
+import type {SocialRelease} from './porch';
+
+const TIMER_KEY = 'magma:timer';
+const ARTIFACTS_KEY = 'magma:artifacts';
+const PORCH_MESSAGES_KEY = 'magma:porch-messages';
+const SOCIAL_NONCES_KEY = 'magma:social-nonces';
+const SOCIAL_RELEASE_KEY = 'magma:social-release';
+
+class FakeStorage {
+  readonly values = new Map<string, unknown>();
+  alarm: number | null = null;
+  failNextAtomicWrite = false;
+
+  async get<T>(key: string): Promise<T | undefined> {
+    return structuredClone(this.values.get(key)) as T | undefined;
+  }
+
+  async put<T>(keyOrEntries: string | Record<string, T>, value?: T) {
+    if (typeof keyOrEntries === 'string') {
+      this.values.set(keyOrEntries, structuredClone(value));
+      return;
+    }
+    if (this.failNextAtomicWrite) {
+      this.failNextAtomicWrite = false;
+      throw new Error('injected atomic write failure');
+    }
+    for (const [key, entry] of Object.entries(keyOrEntries)) this.values.set(key, structuredClone(entry));
+  }
+
+  async list<T>({prefix = ''}: {prefix?: string} = {}) {
+    return new Map([...this.values].filter(([key]) => key.startsWith(prefix))) as Map<string, T>;
+  }
+
+  async delete(keyOrKeys: string | string[]) {
+    if (Array.isArray(keyOrKeys)) {
+      let count = 0;
+      for (const key of keyOrKeys) if (this.values.delete(key)) count += 1;
+      return count;
+    }
+    return this.values.delete(keyOrKeys);
+  }
+
+  async setAlarm(value: number | Date) {
+    this.alarm = typeof value === 'number' ? value : value.getTime();
+  }
+
+  async deleteAlarm() {
+    this.alarm = null;
+  }
+
+  async getAlarm() {
+    return this.alarm;
+  }
+
+  async transaction<T>(closure: (transaction: FakeStorage) => Promise<T>) {
+    const transaction = new FakeStorage();
+    for (const [key, value] of this.values) transaction.values.set(key, structuredClone(value));
+    transaction.alarm = this.alarm;
+    transaction.failNextAtomicWrite = this.failNextAtomicWrite;
+    this.failNextAtomicWrite = false;
+    const result = await closure(transaction);
+    this.values.clear();
+    for (const [key, value] of transaction.values) this.values.set(key, structuredClone(value));
+    this.alarm = transaction.alarm;
+    return result;
+  }
+}
+
+class FakeConnection {
+  state: Participant | null = null;
+  readonly sent: Array<Record<string, unknown>> = [];
+
+  constructor(readonly id: string) {}
+
+  setState(state: Participant | null) {
+    this.state = state;
+    return state;
+  }
+
+  send(message: string) {
+    this.sent.push(JSON.parse(message) as Record<string, unknown>);
+  }
+}
+
+class FakeRoom {
+  readonly storage = new FakeStorage();
+  readonly connections: FakeConnection[] = [];
+  readonly broadcasts: Array<Record<string, unknown>> = [];
+  readonly id = 'test-room';
+  readonly internalID = 'test-room';
+  readonly name = 'main';
+  readonly env = {};
+  readonly context = {};
+  readonly parties = {};
+
+  getConnections<T>() {
+    return this.connections as unknown as Iterable<T>;
+  }
+
+  broadcast(message: string | ArrayBuffer | ArrayBufferView) {
+    if (typeof message === 'string') this.broadcasts.push(JSON.parse(message) as Record<string, unknown>);
+  }
+}
+
+const profile = (memberId: string, name: string): Profile => ({
+  memberId,
+  name,
+  color: '#9d8cff',
+  emoji: '🫧',
+  intention: 'Hold the room',
+});
+
+const connect = async (server: MagmaRoom, room: FakeRoom, connection: FakeConnection, person: Profile) => {
+  room.connections.push(connection);
+  const query = new URLSearchParams(person);
+  await server.onConnect(connection as never, {request: new Request(`https://example.test/party?${query}`)} as never);
+};
+
+const send = (server: MagmaRoom, connection: FakeConnection, message: Record<string, unknown>) =>
+  server.onMessage(JSON.stringify(message), connection as never);
+
+const runningFocus = (sessionId = 'focus-session'): TimerState => {
+  const timer = createTimer(sessionId);
+  timer.durations = {focus: 30_000, shortBreak: 30_000, longBreak: 30_000};
+  timer.durationMs = 30_000;
+  timer.remainingMs = 30_000;
+  return applyTimerCommand(timer, {type: 'start'}, 1_000, 'host-member', 'unused');
+};
+
+const latestSnapshot = (messages: Array<Record<string, unknown>>) =>
+  [...messages].reverse().find((message) => message.type === 'snapshot') as RoomSnapshot | undefined;
+
+describe('Magma room deadline and restart invariants', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('atomically settles a post-deadline Porch message and schedules the auto-break alarm', async () => {
+    const room = new FakeRoom();
+    await room.storage.put(TIMER_KEY, runningFocus());
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const host = new FakeConnection('host-tab');
+    await connect(server, room, host, profile('host-member', 'Host'));
+
+    await send(server, host, {type: 'porch.message', nonce: 'focus-nonce-1', text: 'Held until the Porch'});
+    await send(server, host, {type: 'social.signal', nonce: 'signal-nonce-1', cueId: 'breathe'});
+    await send(server, host, {type: 'reaction', emoji: '🔥'});
+    const restartedDuringFocus = new MagmaRoom(room as never);
+    await restartedDuringFocus.onStart();
+
+    vi.setSystemTime(31_000);
+    await send(restartedDuringFocus, host, {type: 'porch.message', nonce: 'break-nonce-1', text: 'Now on the Porch'});
+
+    const timer = await room.storage.get<TimerState>(TIMER_KEY);
+    const release = await room.storage.get<SocialRelease>(SOCIAL_RELEASE_KEY);
+    const artifacts = await room.storage.get<SessionArtifact[]>(ARTIFACTS_KEY);
+    expect(timer).toMatchObject({mode: 'shortBreak', status: 'running'});
+    expect(room.storage.alarm).toBe(timer?.endsAt);
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts?.[0]).toMatchObject({id: 'focus-session', reactionCount: 1});
+    expect(release).toMatchObject({
+      releaseId: 'focus-session',
+      signalCounts: {breathe: 1},
+      reactionCounts: {'🔥': 1},
+      totalSignals: 1,
+      totalReactions: 1,
+    });
+    expect((await room.storage.get<Array<{text: string}>>(PORCH_MESSAGES_KEY))?.map(({text}) => text))
+      .toEqual(['Held until the Porch', 'Now on the Porch']);
+    expect(room.broadcasts.filter((message) => message.type === 'session.complete')).toHaveLength(1);
+
+    room.broadcasts.length = 0;
+    const restarted = new MagmaRoom(room as never);
+    await restarted.onStart();
+    const returning = new FakeConnection('returning-tab');
+    await connect(restarted, room, returning, profile('other-member', 'Other'));
+    expect(room.broadcasts.filter((message) => message.type === 'session.complete')).toHaveLength(0);
+    expect(latestSnapshot(returning.sent)?.socialRelease).toMatchObject({releaseId: 'focus-session'});
+  });
+
+  it('does not consume a nonce when the atomic Porch payload write fails', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const host = new FakeConnection('host-tab');
+    await connect(server, room, host, profile('host-member', 'Host'));
+    room.storage.failNextAtomicWrite = true;
+
+    const message = {type: 'porch.message', nonce: 'retry-nonce-1', text: 'Please survive retry'};
+    await expect(send(server, host, message)).rejects.toThrow('injected atomic write failure');
+    expect(await room.storage.get(SOCIAL_NONCES_KEY)).toBeUndefined();
+    expect(await room.storage.get(PORCH_MESSAGES_KEY)).toBeUndefined();
+
+    await send(server, host, message);
+    await send(server, host, message);
+    expect(await room.storage.get(SOCIAL_NONCES_KEY)).toEqual(['retry-nonce-1']);
+    expect((await room.storage.get<Array<{text: string}>>(PORCH_MESSAGES_KEY))?.map(({text}) => text))
+      .toEqual(['Please survive retry']);
+    expect(host.sent.filter((entry) => entry.type === 'porch.accepted')).toHaveLength(2);
+  });
+
+  it('does not advance live timer memory or its alarm when a start transaction fails', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const host = new FakeConnection('host-tab');
+    await connect(server, room, host, profile('host-member', 'Host'));
+    await send(server, host, {type: 'porch.message', nonce: 'before-start-1', text: 'Still gathering'});
+    room.storage.failNextAtomicWrite = true;
+
+    await expect(send(server, host, {type: 'timer.command', command: {type: 'start'}, expectedRevision: 0}))
+      .rejects.toThrow('injected atomic write failure');
+    expect(room.storage.alarm).toBeNull();
+    expect(await room.storage.get(TIMER_KEY)).toBeUndefined();
+    expect((await room.storage.get<Array<{text: string}>>(PORCH_MESSAGES_KEY))?.map(({text}) => text)).toEqual(['Still gathering']);
+
+    await send(server, host, {type: 'timer.command', command: {type: 'start'}, expectedRevision: 0});
+    const timer = await room.storage.get<TimerState>(TIMER_KEY);
+    expect(timer).toMatchObject({status: 'running', revision: 1});
+    expect(room.storage.alarm).toBe(timer?.endsAt);
+    expect(await room.storage.get(PORCH_MESSAGES_KEY)).toEqual([]);
+  });
+
+  it('retries a failed atomic completion without duplicate artifacts or events', async () => {
+    const room = new FakeRoom();
+    await room.storage.put(TIMER_KEY, runningFocus());
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    vi.setSystemTime(31_000);
+    room.storage.failNextAtomicWrite = true;
+
+    await expect(server.onAlarm()).rejects.toThrow('injected atomic write failure');
+    expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({mode: 'focus', status: 'running'});
+    expect(await room.storage.get(ARTIFACTS_KEY)).toBeUndefined();
+    expect(room.broadcasts.filter((message) => message.type === 'session.complete')).toHaveLength(0);
+
+    await server.onAlarm();
+    await server.onAlarm();
+    expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({mode: 'shortBreak', status: 'running'});
+    expect(await room.storage.get<SessionArtifact[]>(ARTIFACTS_KEY)).toHaveLength(1);
+    expect(room.broadcasts.filter((message) => message.type === 'session.complete')).toHaveLength(1);
+  });
+
+  it('catches up an elapsed focus and auto-break in one commit but creates only a focus Ember', async () => {
+    const room = new FakeRoom();
+    await room.storage.put(TIMER_KEY, runningFocus());
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const host = new FakeConnection('host-tab');
+    await connect(server, room, host, profile('host-member', 'Host'));
+    await send(server, host, {type: 'social.signal', nonce: 'signal-catchup-1', cueId: 'reset'});
+    vi.setSystemTime(61_000);
+
+    await server.onAlarm();
+
+    expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({mode: 'focus', status: 'idle'});
+    expect(room.storage.alarm).toBeNull();
+    expect(await room.storage.get<SessionArtifact[]>(ARTIFACTS_KEY)).toHaveLength(1);
+    expect((await room.storage.get<SessionArtifact[]>(ARTIFACTS_KEY))?.[0]).toMatchObject({mode: 'focus'});
+    expect(await room.storage.get<SocialRelease>(SOCIAL_RELEASE_KEY)).toMatchObject({
+      releaseId: 'focus-session', signalCounts: {reset: 1}, totalSignals: 1,
+    });
+    expect(room.broadcasts.filter((message) => message.type === 'session.complete')).toHaveLength(1);
+    expect(room.broadcasts.filter((message) => message.type === 'social.bloom')).toHaveLength(1);
+  });
+
+  it('rejects a proposal whose originating focus elapsed before approval', async () => {
+    const room = new FakeRoom();
+    await room.storage.put(TIMER_KEY, runningFocus());
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const host = new FakeConnection('host-tab');
+    const guest = new FakeConnection('guest-tab');
+    await connect(server, room, host, profile('host-member', 'Host'));
+    await connect(server, room, guest, profile('guest-member', 'Guest'));
+
+    await send(server, guest, {type: 'timer.command', command: {type: 'pause'}, expectedRevision: 1});
+    const proposal = latestSnapshot(room.broadcasts)?.proposal;
+    expect(proposal).toMatchObject({baseRevision: 1, baseSessionId: 'focus-session'});
+
+    vi.setSystemTime(31_000);
+    await send(server, host, {type: 'timer.approve', proposalId: proposal!.id});
+    expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({mode: 'shortBreak', status: 'running'});
+    expect(room.broadcasts.filter((message) => message.type === 'session.complete')).toHaveLength(1);
+  });
+
+  it('rejects stale settings instead of aborting the newly auto-started break', async () => {
+    const room = new FakeRoom();
+    await room.storage.put(TIMER_KEY, runningFocus());
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const host = new FakeConnection('host-tab');
+    await connect(server, room, host, profile('host-member', 'Host'));
+    vi.setSystemTime(31_000);
+
+    await send(server, host, {
+      type: 'timer.settings',
+      durations: {focus: 60_000, shortBreak: 60_000, longBreak: 60_000},
+      autoAdvance: false,
+      expectedRevision: 1,
+      expectedSessionId: 'focus-session',
+    });
+
+    expect(await room.storage.get<TimerState>(TIMER_KEY)).toMatchObject({
+      mode: 'shortBreak', status: 'running', autoAdvance: true, durationMs: 30_000,
+    });
+    expect(host.sent.some((message) => message.type === 'notice')).toBe(true);
+  });
+
+  it('settles before attributing a late join to phase participants', async () => {
+    const room = new FakeRoom();
+    await room.storage.put(TIMER_KEY, runningFocus());
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    vi.setSystemTime(31_000);
+
+    const late = new FakeConnection('late-tab');
+    await connect(server, room, late, profile('late-member', 'Late'));
+    const artifacts = await room.storage.get<SessionArtifact[]>(ARTIFACTS_KEY);
+    expect(artifacts?.[0].participants).toEqual([]);
+    expect((await room.storage.get<SessionArtifact['participants']>('magma:phase-participants'))?.map(({memberId}) => memberId))
+      .toEqual(['late-member']);
+  });
+
+  it('hydrates a new tab from authoritative same-member presence', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const first = new FakeConnection('first-tab');
+    const second = new FakeConnection('second-tab');
+    const person = profile('same-member', 'Same');
+    await connect(server, room, first, person);
+    await send(server, first, {type: 'presence.set', choice: 'away'});
+    await connect(server, room, second, person);
+    expect(second.state?.presence).toBe('away');
+    expect(second.state?.joinedAt).toBe(first.state?.joinedAt);
+  });
+
+  it('enforces a room-wide social-event budget across otherwise-valid members', async () => {
+    const room = new FakeRoom();
+    const server = new MagmaRoom(room as never);
+    await server.onStart();
+    const members: FakeConnection[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const connection = new FakeConnection(`tab-${index}`);
+      members.push(connection);
+      await connect(server, room, connection, profile(`member-000${index}`, `Member ${index}`));
+    }
+    room.broadcasts.length = 0;
+
+    for (const connection of members) {
+      for (let index = 0; index < 6; index += 1) await send(server, connection, {type: 'reaction', emoji: '✨'});
+    }
+
+    expect(room.broadcasts.filter((message) => message.type === 'reaction')).toHaveLength(24);
+  });
+});

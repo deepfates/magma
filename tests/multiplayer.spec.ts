@@ -1,5 +1,7 @@
-import {expect, test, type Page} from '@playwright/test';
+import {expect, test, type BrowserContext, type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+
+const blockRemoteMedia = (context: BrowserContext) => context.route(/(youtube(?:-nocookie)?\.com|googlevideo\.com|ytimg\.com)/, (route) => route.abort());
 
 const enterAs = async (page: Page, name: string, intention: string) => {
   await page.getByRole('button', {name: 'Room'}).click();
@@ -98,6 +100,77 @@ test('a completed focus becomes one durable ember and starts the break', async (
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('magma:block-ritual') ?? '{}').tally)).toBe(0);
 });
 
+test('the Floor holds social activity and opens it on the Porch', async ({browser}) => {
+  test.setTimeout(75_000);
+  const room = `porch-${crypto.randomUUID()}`;
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  await Promise.all([blockRemoteMedia(hostContext), blockRemoteMedia(guestContext)]);
+  const host = await hostContext.newPage();
+  const guest = await guestContext.newPage();
+
+  await host.goto(`/?room=${room}`);
+  await enterAs(host, 'Maya', 'Hold the threshold');
+  await guest.goto(`/?room=${room}`);
+  await enterAs(guest, 'Jules', 'Work quietly together');
+
+  await host.getByRole('button', {name: 'Tempo'}).click();
+  await host.getByRole('spinbutton', {name: 'Focus min'}).fill('0.5');
+  await host.getByRole('button', {name: 'Set room cadence'}).click();
+  await host.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
+  await host.getByRole('button', {name: 'Ready'}).click();
+  await expect(guest.locator('.person').filter({hasText: 'Maya'}).locator('.posture')).toHaveText('ready');
+
+  await host.locator('.tool-dock').getByRole('button', {name: 'Focus'}).click();
+  await host.getByRole('button', {name: 'Start together'}).click();
+  await host.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
+  await guest.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
+  await expect(host.getByText('Conversation is resting.')).toBeVisible();
+  await expect(guest.locator('.person').filter({hasText: 'Jules'}).locator('.posture')).toHaveText('focusing');
+
+  await guest.getByLabel('Leave a thought for the Porch').fill('A quiet thought for later');
+  await guest.getByRole('button', {name: 'Hold for Porch'}).click();
+  await expect(guest.getByLabel('Leave a thought for the Porch')).toHaveValue('');
+  await guest.getByRole('button', {name: 'Send sparkles reaction'}).click();
+  await guest.locator('.tool-dock').getByRole('button', {name: 'Environment', exact: true}).click();
+  await expect(guest.getByRole('button', {name: 'Ritual cues off'})).toBeVisible();
+  await expect(guest.getByRole('button', {name: 'Social sounds off'})).toBeVisible();
+  await guest.getByRole('button', {name: /With you/}).click();
+  await guest.getByRole('button', {name: 'Quiet everything'}).click();
+  await expect(host.getByText('A quiet thought for later')).toHaveCount(0);
+  await expect(host.locator('.social-bloom-visual')).toHaveCount(0);
+
+  await expect(host.getByRole('heading', {name: '1 minute held together.'})).toBeVisible({timeout: 36_000});
+  await expect(host.locator('.social-bloom-visual')).toBeVisible();
+  await expect(host.locator('.social-bloom-visual')).toHaveCount(1);
+  await expect(host.locator('.social-announcement')).toContainText('1 reaction and 1 signal');
+  await expect(guest.locator('.social-bloom-visual')).toBeHidden();
+  await expect(guest.locator('.social-announcement')).toBeVisible();
+  await host.getByRole('button', {name: 'Close session ember'}).click();
+  await host.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
+  await expect(host.locator('.porch-messages').getByText('A quiet thought for later')).toBeVisible();
+  await expect(host.getByText('The room can talk.')).toBeVisible();
+  await host.getByRole('button', {name: 'Ready'}).click();
+  await expect(host.locator('.person').filter({hasText: 'Maya'}).locator('.posture')).toHaveText('ready');
+
+  await host.reload();
+  await host.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
+  await expect(host.locator('.porch-release-note')).toContainText('1 reaction and 1 signal');
+  await expect(host.locator('.porch-messages').getByText('A quiet thought for later')).toBeVisible();
+  await expect(host.locator('.social-bloom-visual')).toHaveCount(0);
+
+  await host.getByRole('button', {name: 'Promote to Spark'}).click();
+  await host.locator('.tool-dock').getByRole('button', {name: 'Workspace', exact: true}).click();
+  await host.getByRole('tab', {name: /Sparks/}).click();
+  await expect(host.locator('.spark-list').getByText('A quiet thought for later')).toBeVisible();
+  await guest.locator('.tool-dock').getByRole('button', {name: 'Workspace', exact: true}).click();
+  await guest.getByRole('tab', {name: /Sparks/}).click();
+  await expect(guest.locator('.spark-list').getByText('A quiet thought for later')).toBeVisible();
+
+  await hostContext.close();
+  await guestContext.close();
+});
+
 test('the core room is accessible and fits a phone viewport', async ({browser}) => {
   const context = await browser.newContext({viewport: {width: 390, height: 844}});
   const page = await context.newPage();
@@ -107,18 +180,30 @@ test('the core room is accessible and fits a phone viewport', async ({browser}) 
   expect(overflow).toBeLessThanOrEqual(1);
   const opener = page.getByRole('button', {name: 'Environment'});
   await opener.click();
-  await expect(page.getByRole('heading', {name: 'Environment'})).toBeVisible();
+  const environmentHeading = page.getByRole('heading', {name: 'Environment'});
+  await expect(environmentHeading).toBeVisible();
+  await expect(environmentHeading).toBeFocused();
   const results = await new AxeBuilder({page}).exclude('.living-window iframe').analyze();
   expect(results.violations).toEqual([]);
   await page.getByRole('button', {name: 'Close Environment'}).click();
   await expect(page.getByRole('heading', {name: 'Environment'})).toBeHidden();
+  await expect(opener).toBeFocused();
+  await page.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
+  const composer = await page.getByLabel('Write to the room').boundingBox();
+  const send = await page.locator('.porch-send').boundingBox();
+  expect(composer?.height).toBeGreaterThanOrEqual(44);
+  expect(send?.height).toBeGreaterThanOrEqual(44);
+  const roomResults = await new AxeBuilder({page}).exclude('.living-window iframe').analyze();
+  expect(roomResults.violations).toEqual([]);
   await context.close();
 });
 
 test('the room view converges while personal media preferences stay local', async ({browser}) => {
+  test.setTimeout(75_000);
   const room = `backdrop-${crypto.randomUUID()}`;
   const hostContext = await browser.newContext();
   const followerContext = await browser.newContext();
+  await Promise.all([blockRemoteMedia(hostContext), blockRemoteMedia(followerContext)]);
   const host = await hostContext.newPage();
   const follower = await followerContext.newPage();
   await host.goto(`/?room=${room}`);
@@ -194,6 +279,14 @@ test('one member keeps room authority across their browser tabs', async ({browse
   const second = await context.newPage();
   await second.goto(`/?room=${room}`);
   await expect(second.getByText('you hold the room tempo')).toBeVisible();
+  await first.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
+  await first.locator('.presence-choices').getByRole('button', {name: 'Ready'}).click();
+  await second.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
+  await expect(second.locator('.presence-choices').getByRole('button', {name: 'Ready'})).toHaveAttribute('aria-pressed', 'true');
+  await second.locator('.presence-choices').getByRole('button', {name: 'Away'}).click();
+  await expect(first.locator('.person').locator('.posture')).toHaveText('away');
+  await first.locator('.tool-dock').getByRole('button', {name: 'Focus', exact: true}).click();
+  await second.locator('.tool-dock').getByRole('button', {name: 'Focus', exact: true}).click();
   await second.getByRole('button', {name: 'Start together'}).click();
   await expect(first.getByRole('button', {name: 'Pause together'})).toBeVisible();
   await first.close();

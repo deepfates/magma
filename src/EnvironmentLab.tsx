@@ -1,21 +1,19 @@
 import {useState} from 'react';
 import {Eye, EyeOff, Radio, Volume2, VolumeX} from 'lucide-react';
 import {SCENE_PRESETS} from './domain/youtube';
-import type {useAmbientAudio, AudioCue} from './useAmbientAudio';
+import type {useAmbientAudio} from './useAmbientAudio';
 import type {useYouTubeBackdrop} from './useYouTubeBackdrop';
+import type {RoomCueId} from './domain/porch';
 
-const CUES: Array<{id: AudioCue; label: string; symbol: string; meaning: string}> = [
-  {id: 'begin', label: 'Cross threshold', symbol: '◒', meaning: 'Begin deliberately'},
-  {id: 'return', label: 'Return', symbol: '↩', meaning: 'Come back without judgment'},
-  {id: 'smallWin', label: 'Small win', symbol: '✦', meaning: 'Acknowledge movement'},
-  {id: 'breathe', label: 'Breathe', symbol: '〰', meaning: 'Make a little room'},
-  {id: 'reset', label: 'Reset', symbol: '↻', meaning: 'Release and begin again'},
-  {id: 'complete', label: 'Block sealed', symbol: '◆', meaning: 'The interval is complete'},
+const SOCIAL_SIGNALS: Array<{id: RoomCueId; label: string; symbol: string; meaning: string}> = [
+  {id: 'smallWin', label: 'Nice', symbol: '✦', meaning: 'Acknowledge movement'},
+  {id: 'breathe', label: 'With you', symbol: '〰', meaning: 'Offer quiet support'},
 ];
 
-export function EnvironmentLab({backdrop, audio}: {
+export function EnvironmentLab({backdrop, audio, sendSignal}: {
   backdrop: ReturnType<typeof useYouTubeBackdrop>;
   audio: ReturnType<typeof useAmbientAudio>;
+  sendSignal: (cueId: RoomCueId) => void;
 }) {
   const [draft, setDraft] = useState('');
   const [lastCue, setLastCue] = useState('');
@@ -52,12 +50,13 @@ export function EnvironmentLab({backdrop, audio}: {
       <div className="surface-section-heading"><strong>Personal sound</strong><small>Local, reversible, and off until chosen.</small></div>
       <div className="inline-controls">
         <button onClick={audio.toggle}>{audio.enabled ? <Volume2 size={14} /> : <VolumeX size={14} />}{audio.enabled ? 'Warm noise on' : 'Warm noise off'}</button>
+        <button onClick={() => audio.setCuesEnabled(!audio.cuesEnabled)}>{audio.cuesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}{audio.cuesEnabled ? 'Ritual cues on' : 'Ritual cues off'}</button>
         <label>Noise <input type="range" min="0" max="100" value={Math.round(audio.volume * 100)} onChange={(event) => audio.setVolume(Number(event.target.value) / 100)} aria-label="Warm noise volume" /></label>
       </div>
 
-      <div className="surface-section-heading"><strong>Cue deck</strong><small>Chosen signals, never variable rewards.</small></div>
-      <div className="cue-deck">{CUES.map((cue) => <button key={cue.id} onClick={() => { void audio.playCue(cue.id, true); setLastCue(`${cue.label}: ${cue.meaning}`); }}><b>{cue.symbol}</b><span><strong>{cue.label}</strong><small>{cue.meaning}</small></span></button>)}</div>
-      <div className="inline-controls"><button onClick={() => audio.setCuesEnabled(!audio.cuesEnabled)}>{audio.cuesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}{audio.cuesEnabled ? 'Ritual cues on' : 'Ritual cues off'}</button></div>
+      <div className="surface-section-heading"><strong>Room signals</strong><small>Peer support stays distinct from the room clock. Sound is a separate local opt-in.</small></div>
+      <div className="cue-deck">{SOCIAL_SIGNALS.map((cue) => <button key={cue.id} onClick={() => { sendSignal(cue.id); setLastCue(`${cue.label} sent: ${cue.meaning}`); }}><b>{cue.symbol}</b><span><strong>{cue.label}</strong><small>{cue.meaning}</small></span></button>)}</div>
+      <div className="inline-controls"><button onClick={() => audio.setSocialCuesEnabled(!audio.socialCuesEnabled)}>{audio.socialCuesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}{audio.socialCuesEnabled ? 'Social sounds on' : 'Social sounds off'}</button></div>
       <div className="cue-status" aria-live="polite">{lastCue}</div>
 
       <div className="surface-section-heading"><strong>Sensory boundary</strong><small>Quiet is a complete setup.</small></div>

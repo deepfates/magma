@@ -1,5 +1,6 @@
 import type {PhaseCompletion, TimerCommand, TimerDurations, TimerState} from './timer';
 import type {MediaCommand, RoomMediaState} from './media';
+import {ROOM_CUES, type PorchMessage, type PresenceChoice, type RoomCueId, type SocialRelease} from './porch';
 
 export type Profile = {
   memberId: string;
@@ -13,6 +14,7 @@ export type Participant = Profile & {
   connectionId: string;
   joinedAt: number;
   connections: number;
+  presence: PresenceChoice;
 };
 
 export type TimerProposal = {
@@ -21,6 +23,8 @@ export type TimerProposal = {
   fromName: string;
   command: TimerCommand;
   createdAt: number;
+  baseRevision: number;
+  baseSessionId: string;
 };
 
 export type SessionArtifact = PhaseCompletion & {
@@ -39,6 +43,8 @@ export type RoomSnapshot = {
   proposal: TimerProposal | null;
   artifacts: SessionArtifact[];
   media: RoomMediaState;
+  porchMessages: PorchMessage[];
+  socialRelease: SocialRelease | null;
 };
 
 export type ClientMessage =
@@ -46,9 +52,12 @@ export type ClientMessage =
   | {type: 'timer.command'; command: TimerCommand; expectedRevision: number}
   | {type: 'timer.approve'; proposalId: string}
   | {type: 'timer.dismiss'; proposalId: string}
-  | {type: 'timer.settings'; durations: TimerDurations; autoAdvance: boolean}
+  | {type: 'timer.settings'; durations: TimerDurations; autoAdvance: boolean; expectedRevision: number; expectedSessionId: string}
   | {type: 'media.command'; command: MediaCommand; expectedRevision: number}
   | {type: 'host.transfer'; memberId: string}
+  | {type: 'presence.set'; choice: PresenceChoice}
+  | {type: 'porch.message'; nonce: string; text: string}
+  | {type: 'social.signal'; nonce: string; cueId: RoomCueId}
   | {type: 'reaction'; emoji: string}
   | {type: 'clock.ping'; clientSentAt: number};
 
@@ -74,7 +83,10 @@ export const isClientMessage = (value: unknown): value is ClientMessage => {
     case 'timer.dismiss':
       return typeof message.proposalId === 'string';
     case 'timer.settings':
-      return Boolean(message.durations && typeof message.durations === 'object') && typeof message.autoAdvance === 'boolean';
+      return Boolean(message.durations && typeof message.durations === 'object')
+        && typeof message.autoAdvance === 'boolean'
+        && Number.isSafeInteger(message.expectedRevision) && Number(message.expectedRevision) >= 0
+        && typeof message.expectedSessionId === 'string' && message.expectedSessionId.length > 0 && message.expectedSessionId.length <= 80;
     case 'media.command': {
       if (!Number.isSafeInteger(message.expectedRevision) || Number(message.expectedRevision) < 0 || !message.command || typeof message.command !== 'object') return false;
       const command = message.command as Record<string, unknown>;
@@ -88,6 +100,14 @@ export const isClientMessage = (value: unknown): value is ClientMessage => {
     }
     case 'host.transfer':
       return typeof message.memberId === 'string';
+    case 'presence.set':
+      return ['here', 'ready', 'away'].includes(String(message.choice));
+    case 'porch.message':
+      return typeof message.nonce === 'string' && /^[a-zA-Z0-9-]{8,80}$/.test(message.nonce)
+        && typeof message.text === 'string' && message.text.trim().length > 0 && message.text.length <= 500;
+    case 'social.signal':
+      return typeof message.nonce === 'string' && /^[a-zA-Z0-9-]{8,80}$/.test(message.nonce)
+        && ROOM_CUES.has(message.cueId as RoomCueId);
     case 'reaction':
       return typeof message.emoji === 'string';
     case 'clock.ping':

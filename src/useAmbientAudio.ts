@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 
 const VOLUME_KEY = 'magma:volume';
 const CUES_KEY = 'magma:cues';
+const SOCIAL_CUES_KEY = 'magma:social-cues';
 export type AudioCue = 'begin' | 'return' | 'smallWin' | 'breathe' | 'reset' | 'complete';
 
 const CUES: Record<AudioCue, {frequencies: number[]; spacing: number; duration: number; wave: OscillatorType}> = {
@@ -19,6 +20,7 @@ export const useAmbientAudio = () => {
   const gainRef = useRef<GainNode | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [cuesEnabled, setCuesEnabledState] = useState(() => localStorage.getItem(CUES_KEY) === 'true');
+  const [socialCuesEnabled, setSocialCuesEnabledState] = useState(() => localStorage.getItem(SOCIAL_CUES_KEY) === 'true');
   const [volume, setVolumeState] = useState(() => Math.min(1, Math.max(0, Number(localStorage.getItem(VOLUME_KEY)) || 0.24)));
 
   const ensureGraph = useCallback(async () => {
@@ -111,11 +113,42 @@ export const useAmbientAudio = () => {
     if (next) void ensureGraph();
   }, [ensureGraph]);
 
+  const playSocialCue = useCallback(async () => {
+    if (!socialCuesEnabled) return;
+    let context: AudioContext;
+    try {
+      context = await ensureGraph();
+    } catch {
+      return;
+    }
+    const start = context.currentTime;
+    [293.66, 349.23].forEach((frequency, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const cueStart = start + index * 0.08;
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0, cueStart);
+      gain.gain.linearRampToValueAtTime(0.025, cueStart + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, cueStart + 0.32);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(cueStart);
+      oscillator.stop(cueStart + 0.34);
+    });
+  }, [ensureGraph, socialCuesEnabled]);
+
+  const setSocialCuesEnabled = useCallback((next: boolean) => {
+    setSocialCuesEnabledState(next);
+    localStorage.setItem(SOCIAL_CUES_KEY, String(next));
+    if (next) void ensureGraph();
+  }, [ensureGraph]);
+
   const silence = useCallback(() => {
     rampTo(0);
     setEnabled(false);
     setCuesEnabled(false);
-  }, [rampTo, setCuesEnabled]);
+    setSocialCuesEnabled(false);
+  }, [rampTo, setCuesEnabled, setSocialCuesEnabled]);
 
   const playChime = useCallback(() => playCue('complete'), [playCue]);
 
@@ -124,5 +157,18 @@ export const useAmbientAudio = () => {
     contextRef.current?.close();
   }, []);
 
-  return {enabled, volume, cuesEnabled, toggle, setVolume, setCuesEnabled, playCue, playChime, silence};
+  return {
+    enabled,
+    volume,
+    cuesEnabled,
+    socialCuesEnabled,
+    toggle,
+    setVolume,
+    setCuesEnabled,
+    setSocialCuesEnabled,
+    playCue,
+    playSocialCue,
+    playChime,
+    silence,
+  };
 };
