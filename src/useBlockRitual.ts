@@ -60,7 +60,7 @@ export const useBlockRitual = () => {
     });
   }, [setState]);
   const beginSession = useCallback((aimSessionId: string) => {
-    setState((current) => current.aimSessionId === aimSessionId ? current : {...current, aimSessionId, finishLine: '', rightNow: ['', '', '']});
+    setState((current) => current.aimSessionId === aimSessionId ? current : {...current, aimSessionId});
   }, [setState]);
   const clearAim = useCallback(() => {
     setState((current) => ({...current, finishLine: '', rightNow: ['', '', '']}));

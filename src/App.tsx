@@ -76,7 +76,7 @@ function People({participants, profile, timer, hostId, isHost, editProfile, tran
   const ready = participants.filter((person) => deriveParticipantPosture(person.presence, timer) === 'ready').length;
   return (
     <section className="people-card">
-      <div className="card-title"><span><Users size={17} /> In the glow</span><small>{ready ? `${ready} ready · ` : ''}{participants.length} {participants.length === 1 ? 'person' : 'people'}</small></div>
+      <div className="card-title"><span><Users size={17} /> People</span><small>{ready ? `${ready} ready · ` : ''}{participants.length} {participants.length === 1 ? 'person' : 'people'}</small></div>
       <div className="people">
         {participants.map((person) => {
           const posture = deriveParticipantPosture(person.presence, timer);
@@ -109,7 +109,7 @@ function Tasks({profile, participants, writable}: {profile: Profile; participant
   return (
     <div className="workspace-content">
       <div className="task-list">
-        {ordered.length === 0 && <p className="empty">Drop one small, finishable thing here.</p>}
+        {ordered.length === 0 && <p className="empty">Keep future work here. Your current outcome stays on Focus.</p>}
         {ordered.map(([id, task]) => {
           const owner = people.get(String(task.ownerId));
           return (
@@ -122,7 +122,7 @@ function Tasks({profile, participants, writable}: {profile: Profile; participant
           );
         })}
       </div>
-      {writable ? <div className="add-task"><input value={draft} maxLength={160} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="What are we making real?" /><button onClick={add} aria-label="Add intention"><Plus size={17} /></button></div> : <p className="surface-note">Guests can read the workspace. A steward can invite you as a member to edit it.</p>}
+      {writable ? <div className="add-task"><input value={draft} maxLength={160} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="Add something for later…" /><button onClick={add} aria-label="Add to shared list"><Plus size={17} /></button></div> : <p className="surface-note">Guests can read the board. A steward can invite you as a member to edit it.</p>}
     </div>
   );
 }
@@ -140,10 +140,10 @@ function Sparks({profile, writable}: {profile: Profile; writable: boolean}) {
   return (
     <div className="workspace-content">
       <div className="spark-list">
-        {ordered.length === 0 && <p className="empty">Leave a thought without interrupting the room.</p>}
+        {ordered.length === 0 && <p className="empty">Save a note the room can return to later.</p>}
         {ordered.map(([id, spark]) => <div className="spark" key={id}><span>{String(spark.emoji)}</span><div><p>{String(spark.text)}</p><small>{String(spark.authorName)}</small></div><button className="icon-button" disabled={!writable} onClick={() => store.setCell('sparks', id, 'pinned', !spark.pinned)} aria-label={`${spark.pinned ? 'Unpin' : 'Pin'} note`}><Pin size={13} fill={spark.pinned ? 'currentColor' : 'none'} /></button>{writable && spark.authorId === profile.memberId && <button className="icon-button" onClick={() => store.delRow('sparks', id)} aria-label="Delete your note"><Trash2 size={13} /></button>}</div>)}
       </div>
-      {writable ? <div className="add-task"><input value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="Leave a spark for the room" /><button onClick={add} aria-label="Add room note"><Plus size={17} /></button></div> : <p className="surface-note">Guests can read Sparks without changing them.</p>}
+      {writable ? <div className="add-task"><input value={draft} maxLength={500} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="Leave a note for later…" /><button onClick={add} aria-label="Add room note"><Plus size={17} /></button></div> : <p className="surface-note">Guests can read notes without changing them.</p>}
     </div>
   );
 }
@@ -154,26 +154,26 @@ function Workspace({profile, participants, writable}: {profile: Profile; partici
   const sparks = useTable('sparks', store);
   return (
     <section className="tasks-card">
-      <div className="workspace-tabs" role="tablist" aria-label="Room workspace">
-        <button role="tab" aria-selected={tab === 'tasks'} className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}><Check size={15} /> Intentions <small>{Object.keys(tasks).length}</small></button>
-        <button role="tab" aria-selected={tab === 'sparks'} className={tab === 'sparks' ? 'active' : ''} onClick={() => setTab('sparks')}><StickyNote size={15} /> Sparks <small>{Object.keys(sparks).length}</small></button>
+      <div className="workspace-tabs" role="tablist" aria-label="Room board">
+        <button role="tab" aria-selected={tab === 'tasks'} className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}><Check size={15} /> Next <small>{Object.keys(tasks).length}</small></button>
+        <button role="tab" aria-selected={tab === 'sparks'} className={tab === 'sparks' ? 'active' : ''} onClick={() => setTab('sparks')}><StickyNote size={15} /> Notes <small>{Object.keys(sparks).length}</small></button>
       </div>
       {tab === 'tasks' ? <Tasks profile={profile} participants={participants} writable={writable} /> : <Sparks profile={profile} writable={writable} />}
     </section>
   );
 }
 
-function CompletionRitual({artifact, onClose, decision, onDecide}: {artifact: SessionArtifact; onClose: () => void; decision?: 'counted' | 'released'; onDecide: (decision: 'counted' | 'released') => void}) {
+function CompletionRitual({artifact, outcome, onClose, onCarryForward}: {artifact: SessionArtifact; outcome?: string; onClose: () => void; onCarryForward?: () => void}) {
   const minutes = Math.round(artifact.durationMs / 60_000);
   return (
     <section className="completion-ritual" aria-live="polite">
-      <button className="icon-button completion-close" onClick={onClose} aria-label="Close session ember"><X size={16} /></button>
+      <button className="icon-button completion-close" onClick={onClose} aria-label="Close focus summary"><X size={16} /></button>
       <div className="ember-mark"><Flame size={28} fill="currentColor" /></div>
-      <p className="eyebrow">session ember · {artifact.mode}</p>
-      <h2>{minutes} {minutes === 1 ? 'minute' : 'minutes'} held together.</h2>
-      <p>{artifact.participants.length ? artifact.participants.map((person) => `${person.emoji} ${person.name}`).join(' · ') : 'The room kept the flame.'}</p>
-      <small>{artifact.reactionCount} reactions · focus #{artifact.focusCount}</small>
-      {artifact.mode === 'focus' && <div className="block-verdict">{decision ? <p>{decision === 'counted' ? '◆ Counted in today’s stack.' : 'Released. The work still happened.'}</p> : <><strong>Was it one clean, finish-directed Block?</strong><div><button onClick={() => onDecide('counted')}>Count this Block</button><button onClick={() => onDecide('released')}>It didn’t count</button></div></>}</div>}
+      <p className="eyebrow">{artifact.mode === 'focus' ? 'focus complete' : 'break complete'}</p>
+      <h2>{minutes} {minutes === 1 ? 'minute' : 'minutes'} together.</h2>
+      <p>{artifact.participants.length ? artifact.participants.map((person) => `${person.emoji} ${person.name}`).join(' · ') : 'The room stayed with you.'}</p>
+      {artifact.reactionCount > 0 && <small>{artifact.reactionCount} {artifact.reactionCount === 1 ? 'reaction' : 'reactions'} waited for the break</small>}
+      {outcome && <div className="block-verdict"><strong>{outcome}</strong><div><button onClick={onClose}>Finished</button>{onCarryForward && <button onClick={onCarryForward}>Keep on Board</button>}</div></div>}
     </section>
   );
 }
@@ -286,7 +286,7 @@ function App() {
       bloom.totalReactions ? `${bloom.totalReactions} ${bloom.totalReactions === 1 ? 'reaction' : 'reactions'}` : '',
       bloom.totalSignals ? `${bloom.totalSignals} ${bloom.totalSignals === 1 ? 'signal' : 'signals'}` : '',
     ].filter(Boolean).join(' and ');
-    setSocialTreatment({id: Date.now(), text: `The room released ${parts} for the Porch.`, glyph: '✦'});
+    setSocialTreatment({id: Date.now(), text: `The room released ${parts} for the break.`, glyph: '✦'});
     void audio.playSocialCue();
     if (socialClear.current !== null) window.clearTimeout(socialClear.current);
     socialClear.current = window.setTimeout(() => setSocialTreatment(null), 4200);
@@ -364,15 +364,19 @@ function App() {
     });
   };
   const actionLabel = session.timer.status === 'running' ? 'Pause' : session.timer.status === 'paused' ? 'Resume' : 'Start';
+  const sharedActionLabel = peopleInRoom > 1
+    ? `${actionLabel} together`
+    : `${actionLabel} focus`;
   const stateCopy = session.timer.status === 'running'
-    ? 'the room is in flow'
-    : session.isHost ? 'you hold the room tempo' : `${session.participants.find((person) => person.memberId === session.hostId)?.name ?? 'the host'} holds the tempo`;
-  const surfaceLabel: Record<Surface, string> = {workspace: 'Workspace', environment: 'Environment', tempo: 'Tempo', room: 'Room'};
+    ? peopleInRoom > 1 ? 'focusing together' : 'focus in progress'
+    : session.timer.status === 'paused'
+      ? 'focus paused · the room stays quiet'
+      : peopleInRoom > 1 ? `${peopleInRoom} people in the room` : 'ready when you are';
+  const surfaceLabel: Record<Surface, string> = {workspace: 'Board', environment: 'Scene', tempo: 'Timing', room: 'Room'};
   const surfaceButtons: Array<{id: Surface | null; label: string; icon: React.ReactNode}> = [
     {id: null, label: 'Focus', icon: <Timer size={18} />},
-    {id: 'workspace', label: 'Workspace', icon: <ListTodo size={18} />},
-    {id: 'environment', label: 'Environment', icon: <SlidersHorizontal size={18} />},
-    {id: 'tempo', label: 'Tempo', icon: <Settings size={18} />},
+    {id: 'workspace', label: 'Board', icon: <ListTodo size={18} />},
+    {id: 'environment', label: 'Scene', icon: <SlidersHorizontal size={18} />},
     {id: 'room', label: 'Room', icon: <Users size={18} />},
   ];
   const arrivalState: ArrivalState = access.session.kind === 'checking'
@@ -394,7 +398,7 @@ function App() {
   return (
     <>
     <main ref={instrumentRef} data-arrival-background className={`instrument-shell ${backdrop.reducedSensory ? 'reduced-sensory' : ''} ${playerMode ? 'player-mode' : ''}`}>
-      <section className="media-stage" aria-label="Living view">
+      <section className={`media-stage ${isFloor(session.timer) ? 'focus-active' : ''}`} aria-label="Living view">
         <YouTubeBackdrop enabled={session.mediaReady && backdrop.enabled && !backdrop.reducedSensory} embedUrl={backdrop.embedUrl} title={backdrop.source.label} media={session.media} roomNow={session.roomNow} onCommand={session.mediaCommand} canShare={canSteerMedia} muted={backdrop.muted} />
         {(!backdrop.enabled || backdrop.reducedSensory) && <div className="quiet-field">{!backdrop.reducedSensory && <LavaShader energy={session.timer.status === 'running' ? 1 : 0.3} presence={session.participants.length} pulse={pulse} phase={session.timer.mode === 'focus' ? 0 : 1} />}<span>{backdrop.reducedSensory ? 'Quiet field' : 'Lava field'}</span></div>}
       </section>
@@ -407,34 +411,34 @@ function App() {
           <div className="header-actions"><button className="camera-control" onClick={() => setPlayerMode(true)}><Maximize2 size={13} /> Camera controls</button><button className="room-locus" aria-label={session.connected ? `Open Room, ${peopleInRoom} ${peopleInRoom === 1 ? 'person' : 'people'} in room` : 'Open Room, reconnecting'} onClick={(event) => openSurface('room', event.currentTarget)}><span className={`status-dot ${session.connected ? 'online' : ''}`} aria-hidden="true" /><span className="room-presence-symbols" aria-hidden="true">{presenceSymbols || 'Room'}</span><small>{peopleInRoom} in room</small></button></div>
         </header>
 
-        <div className="clock-strip" aria-label="Shared clock summary">
+        {(activeSurface !== null || session.completion || reviewArtifact) && <div className="clock-strip" aria-label="Shared clock summary">
           <button className="clock-summary" onClick={() => setActiveSurface(null)}><span>{MODES.find((mode) => mode.id === session.timer.mode)?.label}</span><strong>{formatRemaining(milliseconds)}</strong></button>
           <button className="clock-transport" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})} aria-label={session.timer.status === 'running' ? 'Pause clock' : 'Start clock'}>{session.timer.status === 'running' ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}</button>
-        </div>
+        </div>}
 
-        {session.timer.focusCount > 0 && (salonPhase === 'returning' || salonPhase === 'gathering') && session.connected && <section className={`return-band ${salonPhase}`} aria-label="Return to the Floor">
-          <div className="return-copy"><span>{salonPhase === 'returning' ? 'Return approaching' : 'The room is gathering'}</span><strong>{salonPhase === 'returning' ? `${formatRemaining(milliseconds)} until the next Block` : `${readyCount} ${readyCount === 1 ? 'person is' : 'people are'} ready`}</strong></div>
-          <div className="return-presence" aria-label="Your return posture"><button aria-label="Join the next Block" aria-pressed={selfPresence === 'ready'} onClick={() => session.setPresence('ready')}>Ready</button><button aria-label="Remain on the Porch" aria-pressed={selfPresence === 'here'} onClick={() => session.setPresence('here')}>Stay on Porch</button><button aria-label="Pause my presence" aria-pressed={selfPresence === 'away'} onClick={() => session.setPresence('away')}>Away</button></div>
-          {salonPhase === 'gathering' && <button className="return-start" onClick={() => session.command({type: 'start'})}>{session.isHost ? 'Start next Block' : 'Ask to start next Block'}</button>}
+        {session.timer.focusCount > 0 && (salonPhase === 'returning' || salonPhase === 'gathering') && session.connected && <section className={`return-band ${salonPhase}`} aria-label="Next focus">
+          <div className="return-copy"><span>{salonPhase === 'returning' ? 'Focus returning soon' : 'Ready for another?'}</span><strong>{salonPhase === 'returning' ? `${formatRemaining(milliseconds)} until the next focus` : `${readyCount} ${readyCount === 1 ? 'person is' : 'people are'} ready`}</strong></div>
+          <div className="return-presence" aria-label="Your next-focus status"><button aria-label="Join the next focus" aria-pressed={selfPresence === 'ready'} onClick={() => session.setPresence('ready')}>Ready</button><button aria-label="Stay on break" aria-pressed={selfPresence === 'here'} onClick={() => session.setPresence('here')}>Stay on break</button><button aria-label="Pause my presence" aria-pressed={selfPresence === 'away'} onClick={() => session.setPresence('away')}>Away</button></div>
+          {salonPhase === 'gathering' && <button className="return-start" onClick={() => session.command({type: 'start'})}>{session.isHost ? 'Start next focus' : 'Ask to start next focus'}</button>}
         </section>}
 
         <div className="surface-stack">
           <section className="focus-console" hidden={activeSurface !== null} aria-label="Focus timer">
-            {(session.completion || reviewArtifact) ? <CompletionRitual artifact={(session.completion || reviewArtifact)!} decision={ritual.decisions[(session.completion || reviewArtifact)!.id]} onDecide={(decision) => { const artifact = (session.completion || reviewArtifact)!; ritual.decide(artifact.id, decision); if (session.completion?.id === artifact.id) ritual.clearAim(); void audio.playCue(decision === 'counted' ? 'smallWin' : 'reset'); }} onClose={() => { if (session.completion?.mode === 'focus') ritual.clearAim(); session.dismissCompletion(); setReviewArtifact(null); }} /> : <>
+            {(session.completion || reviewArtifact) ? <CompletionRitual artifact={(session.completion || reviewArtifact)!} outcome={session.completion?.mode === 'focus' ? ritual.finishLine : undefined} onCarryForward={session.workspaceWritable && ritual.finishLine ? () => { store.setRow('tasks', crypto.randomUUID(), {text: ritual.finishLine, done: false, createdAt: Date.now(), createdBy: session.profile.name, ownerId: session.profile.memberId, ownerName: session.profile.name, completedAt: 0}); ritual.clearAim(); session.dismissCompletion(); setReviewArtifact(null); setActiveSurface('workspace'); } : undefined} onClose={() => { if (session.completion?.mode === 'focus') ritual.clearAim(); session.dismissCompletion(); setReviewArtifact(null); }} /> : <>
               <p className="surface-kicker"><Sparkles size={13} /> {stateCopy}</p>
               {session.proposal && <div className="proposal"><span><Crown size={14} /> {session.proposal.fromName} asks to {session.proposal.command.type === 'mode' ? `switch to ${session.proposal.command.mode}` : session.proposal.command.type}</span>{session.isHost ? <div><button onClick={() => session.approve(session.proposal!.id)}>Allow</button><button onClick={() => session.dismiss(session.proposal!.id)}>Not now</button></div> : <small>Waiting for the host</small>}</div>}
               {session.connected && session.participants.length > 0 && session.timer.mode === 'focus' && session.timer.status !== 'running' && <BlockAim ritual={ritual} sessionId={session.timer.sessionId} />}
               {session.timer.status === 'running' && ritual.finishLine && <div className="held-aim"><span>Finish line</span><strong>{ritual.finishLine}</strong></div>}
               <div className="timer-wrap"><div className="orbit" style={{'--progress': `${Math.max(0, Math.min(1, progress)) * 360}deg`} as React.CSSProperties} /><div className="timer" role="timer" aria-live="off">{formatRemaining(milliseconds)}</div></div>
-              <div className="timer-meta"><span>{MODES.find((mode) => mode.id === session.timer.mode)?.label}</span><span>{session.timer.focusCount % 4 + 1} of 4</span></div>
-              <div className="timer-actions"><button className="primary" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})}>{session.timer.status === 'running' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}{session.isHost ? `${actionLabel} together` : `Ask to ${actionLabel.toLowerCase()}`}</button><button className="secondary-action" onClick={() => session.command({type: 'reset'})} aria-label={session.isHost ? 'Reset timer' : 'Ask host to reset timer'}><RotateCcw size={17} /></button></div>
-              {session.artifacts[0] && <button className="last-ember" onClick={() => setReviewArtifact(session.artifacts[0])}><Flame size={13} fill="currentColor" /> Last ember · {Math.round(session.artifacts[0].durationMs / 60_000)}m</button>}
+              <div className="timer-meta"><button className="tempo-link" aria-label="Adjust focus timing" onClick={(event) => openSurface('tempo', event.currentTarget)}><Settings size={12} /> {MODES.find((mode) => mode.id === session.timer.mode)?.label} · {Math.round(session.timer.durationMs / 60_000)} min</button></div>
+              <div className="timer-actions"><button className="primary" onClick={() => session.command({type: session.timer.status === 'running' ? 'pause' : 'start'})}>{session.timer.status === 'running' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}{session.isHost ? sharedActionLabel : `Ask to ${actionLabel.toLowerCase()}`}</button><button className="secondary-action" onClick={() => session.command({type: 'reset'})} aria-label={session.isHost ? 'Reset timer' : 'Ask host to reset timer'}><RotateCcw size={17} /></button></div>
+              {session.artifacts[0] && <button className="last-ember" onClick={() => setReviewArtifact(session.artifacts[0])}><Flame size={13} fill="currentColor" /> Last focus · {Math.round(session.artifacts[0].durationMs / 60_000)}m</button>}
             </>}
           </section>
 
-          <section className="tool-surface" hidden={activeSurface !== 'workspace'} aria-labelledby="surface-workspace"><div className="surface-header"><div><p>Shared surface</p><h2 id="surface-workspace" tabIndex={-1}>Workspace</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Workspace"><X size={18} /></button></div><Workspace profile={session.profile} participants={session.participants} writable={session.workspaceWritable} /></section>
-          <section className="tool-surface" hidden={activeSurface !== 'environment'} aria-labelledby="surface-environment"><div className="surface-header"><div><p>Room + personal</p><h2 id="surface-environment" tabIndex={-1}>Environment</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Environment"><X size={18} /></button></div><EnvironmentLab backdrop={backdrop} audio={audio} sendSignal={session.signal} queue={session.mediaQueue} role={session.role} memberId={session.profile.memberId} floor={isFloor(session.timer)} addSource={session.enqueueMedia} moveItem={session.moveMedia} removeItem={session.removeMedia} selectItem={session.selectMedia} setPolicy={session.setDeckPolicy} /></section>
-          <section className="tool-surface" hidden={activeSurface !== 'tempo'} aria-labelledby="surface-tempo"><div className="surface-header"><div><p>Room authority</p><h2 id="surface-tempo" tabIndex={-1}>Tempo</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Tempo"><X size={18} /></button></div>
+          <section className="tool-surface" hidden={activeSurface !== 'workspace'} aria-labelledby="surface-workspace"><div className="surface-header"><div><p>Shared · for later</p><h2 id="surface-workspace" tabIndex={-1}>Board</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Board"><X size={18} /></button></div><Workspace profile={session.profile} participants={session.participants} writable={session.workspaceWritable} /></section>
+          <section className="tool-surface" hidden={activeSurface !== 'environment'} aria-labelledby="surface-environment"><div className="surface-header"><div><p>Room + this device</p><h2 id="surface-environment" tabIndex={-1}>Scene</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Scene"><X size={18} /></button></div><EnvironmentLab backdrop={backdrop} audio={audio} sendSignal={session.signal} queue={session.mediaQueue} role={session.role} memberId={session.profile.memberId} floor={isFloor(session.timer)} addSource={session.enqueueMedia} moveItem={session.moveMedia} removeItem={session.removeMedia} selectItem={session.selectMedia} setPolicy={session.setDeckPolicy} /></section>
+          <section className="tool-surface" hidden={activeSurface !== 'tempo'} aria-labelledby="surface-tempo"><div className="surface-header"><div><p>Shared clock</p><h2 id="surface-tempo" tabIndex={-1}>Timing</h2></div><button className="icon-button" onClick={closeSurface} aria-label="Close Timing"><X size={18} /></button></div>
             <div className="mode-switcher">{MODES.map((mode) => <button aria-pressed={session.timer.mode === mode.id} className={session.timer.mode === mode.id ? 'active' : ''} key={mode.id} onClick={() => session.command({type: 'mode', mode: mode.id})}>{mode.label}</button>)}</div>
             <div className="timer-settings"><label>Focus <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.focus / 60_000} id="focus-duration" /> min</span></label><label>Short break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.shortBreak / 60_000} id="short-duration" /> min</span></label><label>Long break <span><input type="number" min="0.5" max="120" step="0.5" defaultValue={session.timer.durations.longBreak / 60_000} id="long-duration" /> min</span></label><label className="auto-setting"><input type="checkbox" defaultChecked={session.timer.autoAdvance} id="auto-advance" /> Auto-start breaks</label><button disabled={!session.isHost} onClick={() => { const get = (id: string) => Number((document.getElementById(id) as HTMLInputElement).value) * 60_000; session.updateSettings({focus: get('focus-duration'), shortBreak: get('short-duration'), longBreak: get('long-duration')}, (document.getElementById('auto-advance') as HTMLInputElement).checked); }}>{session.isHost ? 'Set room cadence' : 'Host controls cadence'}</button></div>
             <button className="text-action" onClick={assist.requestNotifications}>{assist.notifications ? <Bell size={14} /> : <BellOff size={14} />}{assist.notifications ? 'Completion alerts on' : 'Enable completion alerts'}</button>
@@ -445,10 +449,13 @@ function App() {
             {editingProfile && <div className="profile-card"><ProfileEditor profile={session.profile} onChange={session.updateProfile} onClose={() => setEditingProfile(false)} /></div>}
             <Porch messages={session.porchMessages} floor={isFloor(session.timer)} connected={session.connected} release={session.socialRelease} onSend={session.sendPorchMessage} onPromote={session.workspaceWritable ? promotePorchMessage : undefined} />
             <div className="reactions" aria-label="Send a reaction">{[['🔥','fire'], ['✨','sparkles'], ['🫡','salute'], ['💧','water']].map(([emoji, name]) => <button aria-label={`Send ${name} reaction`} key={emoji} onClick={() => session.react(emoji)}>{emoji}</button>)}</div>
-            <small className="reaction-policy">{isFloor(session.timer) ? 'Reactions rest until the Porch opens.' : 'Reactions appear now.'}</small>
-            {!legacyAccess && protectedAccess && <RoomAccess role={protectedAccess.admission.role} busy={invitationBusy} copied={copied} onCopyInvitation={(role) => copyInvite(false, role)} onRotateInvitation={(role) => copyInvite(true, role)} />}
-            {invitationPayload && <section className="invitation-ready" aria-label="Prepared invitation"><label>Invitation ready<textarea readOnly value={invitationPayload} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" onClick={() => { void copyPreparedInvitation(); }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy invitation'}</button><small>The room address and invitation code stay separate. Share both privately.</small></section>}
-            <p className="surface-note">{legacyAccess ? 'This older room remains open to anyone with its link. Make a new room for signed, revocable access.' : 'Profiles are editable; room membership is bound to this device’s private key.'}</p>
+            <small className="reaction-policy">{isFloor(session.timer) ? 'Reactions wait for the break.' : 'Reactions appear now.'}</small>
+            {!legacyAccess && protectedAccess ? <details className="room-access-details">
+              <summary>Invitations &amp; access</summary>
+              <RoomAccess role={protectedAccess.admission.role} busy={invitationBusy} copied={copied} onCopyInvitation={(role) => copyInvite(false, role)} onRotateInvitation={(role) => copyInvite(true, role)} />
+              {invitationPayload && <section className="invitation-ready" aria-label="Prepared invitation"><label>Invitation ready<textarea readOnly value={invitationPayload} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" onClick={() => { void copyPreparedInvitation(); }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy invitation'}</button><small>Share the room address and invitation code privately.</small></section>}
+              <p className="surface-note">Profiles are editable; access is tied to this device.</p>
+            </details> : <p className="surface-note">This older room remains open to anyone with its link. Make a new room for private access.</p>}
           </section>
         </div>
 

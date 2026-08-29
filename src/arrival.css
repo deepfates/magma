@@ -106,6 +106,10 @@
 .arrival-reconnecting button { min-height: 32px; margin-left: 5px; padding: 4px 7px; border: 0; color: #9c9d98; background: transparent; cursor: pointer; font-size: 10px; }
 
 .room-access { position: relative; margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(241, 240, 235, .13); }
+.room-access-details { margin-top: 24px; border-top: 1px solid rgba(241, 240, 235, .13); }
+.room-access-details > summary { min-height: 44px; padding: 14px 0; color: #9c9d98; cursor: pointer; font-size: 11px; }
+.room-access-details[open] > summary { color: #f1f0eb; }
+.room-access-details > .room-access { margin-top: 0; padding-top: 6px; border-top: 0; }
 .room-access-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .room-access-heading p { margin: 0 0 3px; color: #8a8d86; text-transform: uppercase; letter-spacing: .11em; font-size: 8px; }
 .room-access-heading h3 { margin: 0; font-size: 16px; font-weight: 560; }

@@ -147,9 +147,9 @@ function useContainedFocus(
 }
 
 const phaseCopy: Record<ArrivalPhase, string> = {
-  floor: 'A focus Block is underway. Entering quietly will not change the clock or view. Anything you write will wait for the Porch.',
+  floor: 'A focus is underway. Entering quietly will not change the clock or view. Anything you write will wait for the break.',
   gathering: 'The room is gathering. Enter whenever you’re ready.',
-  porch: 'The Porch is open. Enter whenever you’re ready.',
+  porch: 'The room is on a break. Enter whenever you’re ready.',
   unknown: 'Entering quietly will not change the room’s clock, view, or anyone else’s setup.',
 };
 
@@ -167,8 +167,8 @@ function SetupChoice({savedAvailable, setup, onChange}: {
 }) {
   return (
     <fieldset className="arrival-setup">
-      <legend>Arrival setup</legend>
-      <label><input type="radio" name="arrival-setup" checked={setup === 'quiet'} onChange={() => onChange('quiet')} /> <span><strong>Quiet</strong><small>Shared media muted; room sounds and notifications off</small></span></label>
+      <legend>On this device</legend>
+      <label><input type="radio" name="arrival-setup" checked={setup === 'quiet'} onChange={() => onChange('quiet')} /> <span><strong>Start quiet</strong><small>The live view stays visible; audio and notifications stay off</small></span></label>
       {savedAvailable && <label><input type="radio" name="arrival-setup" checked={setup === 'saved'} onChange={() => onChange('saved')} /> <span><strong>Use my saved setup</strong><small>Your local sensory choices</small></span></label>}
     </fieldset>
   );
@@ -311,10 +311,10 @@ export function ArrivalVeil({
           <div>
             <p className="arrival-kicker">{state.roomName}</p>
             <h2 id={titleId} tabIndex={-1} data-initial-focus>Your room is ready.</h2>
-            <p id={descriptionId}>Invite someone, then enter. Inside, name one finish line and start the shared timer.</p>
+            <p id={descriptionId}>Invite someone, then enter. Inside, choose one outcome and start the shared focus.</p>
             <div className="arrival-actions arrival-actions-stack">
               <button className="arrival-primary" type="button" onClick={() => { void onCopyInvitation?.(); }} disabled={state.copying}>{state.copied ? <Check size={16} /> : <Copy size={16} />}{state.copying ? 'Creating invitation…' : state.copied ? 'Invitation copied' : 'Copy invitation'}</button>
-              <button className="arrival-secondary" type="button" onClick={onEnterCreatedRoom}>{state.invitationPayload ? 'Enter the room' : 'Enter without inviting'}</button>
+              <button className="arrival-secondary" type="button" onClick={onEnterCreatedRoom}>{state.invitationPayload ? 'Enter the room' : 'Continue solo'}</button>
             </div>
             {state.invitationPayload && <label className="arrival-invitation-ready">Invitation ready<textarea readOnly value={state.invitationPayload} onFocus={(event) => event.currentTarget.select()} /><small>If copying is unavailable, select and copy this invitation.</small></label>}
             <span className="arrival-live" aria-live="polite">{state.copied ? 'Invitation copied.' : ''}</span>
@@ -339,9 +339,9 @@ export function ArrivalVeil({
 
         {state.kind === 'proving' && (
           <div aria-busy="true">
-            <p className="arrival-kicker">Room access</p>
-            <h2 id={titleId} tabIndex={-1} data-initial-focus>Confirming your place…</h2>
-            <p id={descriptionId}>Checking your room access. The room stays quiet.</p>
+            <p className="arrival-kicker">Magma</p>
+            <h2 id={titleId} tabIndex={-1} data-initial-focus>Opening the room…</h2>
+            <p id={descriptionId}>Checking the door before anything begins.</p>
           </div>
         )}
 
@@ -432,7 +432,7 @@ export function RoomAccess({
   return (
     <section className="room-access" aria-labelledby={titleId}>
       <div className="room-access-heading">
-        <div><p>Room boundary</p><h3 id={titleId}>Access</h3></div>
+        <div><p>Private room</p><h3 id={titleId}>Access</h3></div>
         <span className="room-role">{role}</span>
       </div>
       {!canManage ? (
@@ -443,7 +443,7 @@ export function RoomAccess({
             <span className={`room-access-dot ${invitationStatus}`} aria-hidden="true" />
             <span><strong>New invitation</strong><small>Separate 7-day code · up to 8 arrivals</small></span>
           </div>
-          <label className="room-access-role-select">Role<select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Exclude<RoomRole, 'owner'>)}>{role === 'owner' && <option value="steward">Steward</option>}<option value="member">Member</option><option value="guest">Guest · read only workspace</option></select></label>
+          <label className="room-access-role-select">Role<select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Exclude<RoomRole, 'owner'>)}>{role === 'owner' && <option value="steward">Steward</option>}<option value="member">Member</option><option value="guest">Guest · read only board</option></select></label>
           <div className="room-access-actions">
             {onCopyInvitation && <button type="button" disabled={busy !== null} onClick={() => { setLocalNotice(''); void onCopyInvitation(inviteRole); }}>{copied ? <Check size={15} /> : <Copy size={15} />}{busy === 'copying' ? 'Creating…' : copied ? 'Copied' : 'Create invitation'}</button>}
             {onSetInvitationPaused && <button type="button" disabled={busy !== null} onClick={() => onSetInvitationPaused(invitationStatus === 'active')}>{invitationStatus === 'active' ? <LockKeyhole size={15} /> : <Link2 size={15} />}{busy === 'pausing' ? 'Updating…' : invitationStatus === 'active' ? 'Pause arrivals' : 'Allow arrivals'}</button>}

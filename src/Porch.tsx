@@ -61,8 +61,8 @@ export function Porch({messages, floor, connected, release, onSend, onPromote}: 
     <section className={`porch ${floor ? 'porch-floor' : 'porch-open'}`} aria-label="Room conversation">
       <header className="porch-header">
         <div>
-          <p className="porch-kicker">{floor ? 'The Floor' : 'The Porch'}</p>
-          <h3>{floor ? 'Conversation is resting.' : 'The room can talk.'}</h3>
+          <p className="porch-kicker">{floor ? 'Focus' : 'Break'}</p>
+          <h3>{floor ? 'Conversation waits for the break.' : 'Conversation is open.'}</h3>
         </div>
         <span className={`porch-connection ${connected ? 'connected' : 'reconnecting'}`} role="status">
           {connected ? 'Connected' : 'Reconnecting'}
@@ -71,20 +71,20 @@ export function Porch({messages, floor, connected, release, onSend, onPromote}: 
 
       {floor ? (
         <div className="porch-sealed">
-          <strong>Messages are held for the Porch.</strong>
-          <p>Leave a thought now. It will appear when the room reaches its break.</p>
+          <strong>Notes wait quietly for the break.</strong>
+          <p>Write one now without interrupting anyone.</p>
         </div>
       ) : (
-        <div ref={logRef} className="porch-messages" role="log" aria-label="Porch messages" aria-live="polite" aria-relevant="additions">
+        <div ref={logRef} className="porch-messages" role="log" aria-label="Room messages" aria-live="polite" aria-relevant="additions">
           {release && (release.totalReactions > 0 || release.totalSignals > 0) && (
             <p className="porch-release-note">
-              This Porch opened with {[
+              This break opened with {[
                 release.totalReactions ? `${release.totalReactions} ${release.totalReactions === 1 ? 'reaction' : 'reactions'}` : '',
                 release.totalSignals ? `${release.totalSignals} ${release.totalSignals === 1 ? 'signal' : 'signals'}` : '',
-              ].filter(Boolean).join(' and ')} held during the Block.
+              ].filter(Boolean).join(' and ')} held during focus.
             </p>
           )}
-          {ordered.length === 0 && <p className="porch-empty">The Porch is quiet. Leave the first thought.</p>}
+          {ordered.length === 0 && <p className="porch-empty">No messages yet.</p>}
           {ordered.map((message) => (
             <article className="porch-message" key={message.id}>
               <div className="porch-message-avatar" aria-hidden="true">{message.authorEmoji}</div>
@@ -95,7 +95,7 @@ export function Porch({messages, floor, connected, release, onSend, onPromote}: 
                 </header>
                 <p className="porch-message-body">{message.text}</p>
                 {onPromote && <button className="porch-promote" type="button" onClick={() => onPromote(message)}>
-                  Promote to Spark
+                  Save to Board
                 </button>}
               </div>
             </article>
@@ -105,7 +105,7 @@ export function Porch({messages, floor, connected, release, onSend, onPromote}: 
 
       <form className="porch-composer" aria-busy={submitting} onSubmit={(event) => { event.preventDefault(); void send(); }}>
         <label className="porch-composer-label" htmlFor={composerId}>
-          {floor ? 'Leave a thought for the Porch' : 'Write to the room'}
+          {floor ? 'Leave a note for the break' : 'Write to the room'}
         </label>
         <textarea
           id={composerId}
@@ -114,14 +114,14 @@ export function Porch({messages, floor, connected, release, onSend, onPromote}: 
           maxLength={500}
           rows={3}
           aria-describedby={composerHintId}
-          placeholder={floor ? 'Held quietly until the break…' : 'What do you want to share?'}
+          placeholder={floor ? 'It will wait quietly…' : 'What do you want to share?'}
           onChange={(event) => { setDraft(event.target.value); setSendError(false); }}
           onKeyDown={handleKeyDown}
         />
         <div className="porch-composer-actions">
           <small id={composerHintId} role={submitting || sendError ? 'status' : undefined}>{submitting ? 'Waiting for the room to accept this message…' : sendError ? 'The room did not accept it. Your draft is still here.' : connected ? 'Enter to send · Shift+Enter for a new line' : 'Your draft stays here while the room reconnects.'}</small>
           <button className="porch-send" type="submit" disabled={!connected || !draft.trim() || submitting}>
-            {submitting ? 'Sending…' : floor ? 'Hold for Porch' : 'Send'}
+            {submitting ? 'Sending…' : floor ? 'Save for break' : 'Send'}
           </button>
         </div>
       </form>

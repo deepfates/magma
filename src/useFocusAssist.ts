@@ -58,7 +58,7 @@ export const useFocusAssist = (
     lastCompletion.current = completion.id;
     playChime();
     if (notifications && document.visibilityState === 'hidden' && Notification.permission === 'granted') {
-      new Notification(completion.mode === 'focus' ? 'Focus held together' : 'Break complete', {
+      new Notification(completion.mode === 'focus' ? 'Focus complete' : 'Break complete', {
         body: completion.mode === 'focus' ? 'Your room is moving into a break.' : 'The room is ready when you are.',
       });
     }

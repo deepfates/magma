@@ -39,7 +39,7 @@ export function EnvironmentLab({
     }
     addSource(source, false);
     setDraft('');
-    setDeckStatus(floor ? 'Held quietly for the Porch.' : 'Added to the Listening Deck.');
+    setDeckStatus(floor ? 'Saved quietly for the break.' : 'Added to the background queue.');
   };
   const quietEverything = () => {
     backdrop.setEnabled(false);
@@ -55,7 +55,7 @@ export function EnvironmentLab({
   const usePreset = (source: YouTubeSource) => {
     addSource(source, canArrange);
     setDeckStatus(canArrange
-      ? floor ? `${source.label} is held for the Porch.` : `${source.label} is now in the room.`
+      ? floor ? `${source.label} is saved for the break.` : `${source.label} is now in the room.`
       : `${source.label} was added for a steward to arrange.`);
   };
   const moveEarlier = (itemId: string) => {
@@ -77,31 +77,31 @@ export function EnvironmentLab({
       </div>
 
       <section className="listening-deck" aria-labelledby="listening-deck-title">
-        <div className="surface-section-heading"><strong id="listening-deck-title">Listening Deck</strong><small>{queue.policy === 'open' ? 'Open deck · everyone can add and arrange.' : 'Stewarded · everyone can add; stewards arrange.'}</small></div>
+        <div className="surface-section-heading"><strong id="listening-deck-title">Background queue</strong><small>{queue.policy === 'open' ? 'Everyone can add and reorder.' : 'Everyone can add; stewards reorder.'}</small></div>
         {active && <article className="deck-now" aria-label="Now in the room"><span><Radio size={12} /> NOW IN THE ROOM</span><strong>{active.source.label}</strong><small>added by {active.addedByEmoji} {active.addedByName}</small></article>}
-        {queue.stagedItemId && <p className="deck-staged">For the Porch · {queue.items.find((item) => item.id === queue.stagedItemId)?.source.label}</p>}
-        <ol className="deck-list" aria-label="Listening deck order">
+        {queue.stagedItemId && <p className="deck-staged">Saved for the break · {queue.items.find((item) => item.id === queue.stagedItemId)?.source.label}</p>}
+        <ol className="deck-list" aria-label="Background queue order">
           {queue.items.filter((item) => item.id !== queue.activeItemId).map((item) => {
             const index = queue.items.findIndex((candidate) => candidate.id === item.id);
             const removable = backdrop.canShare && canRemoveQueueItem(role, queue.policy, memberId, item);
             return <li key={item.id} className={item.id === queue.stagedItemId ? 'staged' : ''}>
-              <div><strong>{item.source.label}</strong><small>{item.addedByEmoji} {item.addedByName}{item.id === queue.stagedItemId ? ' · held for Porch' : ''}</small></div>
+              <div><strong>{item.source.label}</strong><small>{item.addedByEmoji} {item.addedByName}{item.id === queue.stagedItemId ? ' · saved for break' : ''}</small></div>
               {canArrange && <div className="deck-actions">
                 <button disabled={index <= 0} onClick={() => moveEarlier(item.id)} aria-label={`Move ${item.source.label} earlier`}><ChevronUp size={14} /></button>
                 <button disabled={index >= queue.items.length - 1} onClick={() => moveLater(item.id)} aria-label={`Move ${item.source.label} later`}><ChevronDown size={14} /></button>
-                <button onClick={() => { selectItem(item.id); setDeckStatus(floor ? `${item.source.label} is held for the Porch.` : `${item.source.label} is now in the room.`); }}>{floor ? 'For Porch' : 'Use now'}</button>
+                <button onClick={() => { selectItem(item.id); setDeckStatus(floor ? `${item.source.label} is saved for the break.` : `${item.source.label} is now in the room.`); }}>{floor ? 'For break' : 'Use now'}</button>
               </div>}
               {removable && <button className="deck-remove" onClick={() => removeItem(item.id)} aria-label={`Remove ${item.source.label}`}><Trash2 size={13} /></button>}
             </li>;
           })}
         </ol>
-        {backdrop.canShare ? <details className="deck-composer"><summary>Add to deck</summary>
+        {backdrop.canShare ? <details className="deck-composer"><summary>Add a background</summary>
           <div className="scene-list">
-            {SCENE_PRESETS.map((scene) => <button className={backdrop.source.id === scene.id ? 'scene-option selected' : 'scene-option'} key={scene.id} onClick={() => usePreset(scene)}><span><Radio size={12} /> {canArrange ? floor ? 'HOLD FOR PORCH' : 'USE NOW' : 'ADD'}</span><strong>{scene.label.replace(' · live', '')}</strong><small>{scene.description}</small></button>)}
+            {SCENE_PRESETS.map((scene) => <button className={backdrop.source.id === scene.id ? 'scene-option selected' : 'scene-option'} key={scene.id} onClick={() => usePreset(scene)}><span><Radio size={12} /> {canArrange ? floor ? 'SAVE FOR BREAK' : 'USE NOW' : 'ADD'}</span><strong>{scene.label.replace(' · live', '')}</strong><small>{scene.description}</small></button>)}
           </div>
-          <div className="custom-scene"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && apply()} placeholder="YouTube video or playlist URL" aria-label="YouTube video or playlist URL" /><button onClick={apply}>Add to deck</button></div>
-        </details> : <p className="surface-note">{role === 'guest' ? 'Guests can listen without changing the deck.' : 'Reconnect to change the deck.'}</p>}
-        {role === 'owner' && <label className="deck-policy">Deck policy<select value={queue.policy} onChange={(event) => setPolicy(event.target.value as DeckPolicy)}><option value="open">Open deck</option><option value="stewarded">Stewarded deck</option></select></label>}
+          <div className="custom-scene"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && apply()} placeholder="YouTube video or playlist URL" aria-label="YouTube video or playlist URL" /><button onClick={apply}>Add to queue</button></div>
+        </details> : <p className="surface-note">{role === 'guest' ? 'Guests can listen without changing the queue.' : 'Reconnect to change the queue.'}</p>}
+        {role === 'owner' && <label className="deck-policy">Who can reorder<select value={queue.policy} onChange={(event) => setPolicy(event.target.value as DeckPolicy)}><option value="open">Everyone</option><option value="stewarded">Stewards only</option></select></label>}
         <div className="cue-status" aria-live="polite">{deckStatus}</div>
       </section>
 

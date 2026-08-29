@@ -40,7 +40,7 @@ test('a private room bootstraps one owner, enrolls by separated code, returns by
   await owner.getByLabel('Name', {exact: true}).fill('Ada');
   await owner.getByRole('button', {name: 'Create room'}).click();
   await expect(owner.getByRole('heading', {name: 'Your room is ready.'})).toBeVisible();
-  await expect(owner.getByRole('button', {name: 'Enter without inviting'})).toBeVisible();
+  await expect(owner.getByRole('button', {name: 'Continue solo'})).toBeVisible();
   await owner.getByRole('button', {name: 'Copy invitation'}).click();
   await expect.poll(() => invitationFrames).toContain('sent:access.invite.create');
   await expect.poll(() => invitationFrames.some((frame) => frame.startsWith('received:access.invite.'))).toBe(true);
@@ -51,9 +51,9 @@ test('a private room bootstraps one owner, enrolls by separated code, returns by
   const firstInvitation = parseInvitation(firstPayload);
   expect(firstInvitation.roomUrl).not.toContain(firstInvitation.capability);
   await owner.getByRole('button', {name: 'Enter the room'}).click();
-  await expect(owner.getByText('you hold the room tempo')).toBeVisible();
-  await expect(owner.getByRole('button', {name: 'Start together'})).toBeVisible();
-  await expect(owner.getByRole('region', {name: 'Return to the Floor'})).toHaveCount(0);
+  await expect(owner.getByText('ready when you are')).toBeVisible();
+  await expect(owner.getByRole('button', {name: 'Start focus'})).toBeVisible();
+  await expect(owner.getByRole('region', {name: 'Next focus'})).toHaveCount(0);
 
   const member = await memberContext.newPage();
   member.on('websocket', (socket) => socketUrls.push(socket.url()));
@@ -62,14 +62,14 @@ test('a private room bootstraps one owner, enrolls by separated code, returns by
   await member.getByLabel('Name', {exact: true}).fill('Lin');
   await member.getByLabel('Invitation code').fill(firstInvitation.capability);
   await member.getByRole('button', {name: 'Enter quietly'}).click();
-  await expect(member.getByText('Ada holds the tempo')).toBeVisible();
+  await expect(member.getByText('2 people in the room')).toBeVisible();
   await expect(member).not.toHaveURL(new RegExp(firstInvitation.capability.replaceAll('.', '\\.')));
   await owner.getByRole('button', {name: 'Room', exact: true}).click();
-  await expect(owner.getByText('2 people')).toBeVisible();
+  await expect(owner.getByText('2 people', {exact: true})).toBeVisible();
 
   await owner.reload();
   await owner.getByRole('button', {name: 'Room', exact: true}).click();
-  await expect(owner.getByText('2 people')).toBeVisible();
+  await expect(owner.getByText('2 people', {exact: true})).toBeVisible();
   await expect(owner.getByText('Ada · you')).toBeVisible();
   expect(socketUrls.every((url) => !url.includes('Ada') && !url.includes('Lin') && !url.includes(firstInvitation.capability))).toBe(true);
 
@@ -83,6 +83,7 @@ test('a private room bootstraps one owner, enrolls by separated code, returns by
   }, revokedRoom)).toBe(false);
   await expect(owner.getByText('1 person')).toBeVisible();
 
+  await owner.locator('.room-access-details > summary').click();
   await owner.locator('.room-access-role-select select').selectOption('guest');
   const guestInvite = owner.locator('.room-access-actions').getByRole('button', {name: 'Create invitation'});
   const preparedInvitation = owner.getByLabel('Prepared invitation').locator('textarea');
@@ -94,10 +95,10 @@ test('a private room bootstraps one owner, enrolls by separated code, returns by
   await guest.getByLabel('Name', {exact: true}).fill('Grace');
   await guest.getByLabel('Invitation code').fill(guestInvitation.capability);
   await guest.getByRole('button', {name: 'Enter quietly'}).click();
-  await expect(guest.getByText('Ada holds the tempo')).toBeVisible();
-  await guest.getByRole('button', {name: 'Workspace', exact: true}).click();
-  await expect(guest.getByText('Guests can read the workspace. A steward can invite you as a member to edit it.')).toBeVisible();
-  await expect(guest.getByPlaceholder('What are we making real?')).toHaveCount(0);
+  await expect(guest.getByText('2 people in the room')).toBeVisible();
+  await guest.getByRole('button', {name: 'Board', exact: true}).click();
+  await expect(guest.getByText('Guests can read the board. A steward can invite you as a member to edit it.')).toBeVisible();
+  await expect(guest.getByPlaceholder('Add something for later…')).toHaveCount(0);
 
   await owner.locator('.room-access-actions').getByRole('button', {name: 'Rotate invitation'}).click();
   await owner.getByRole('alertdialog').getByRole('button', {name: 'Rotate invitation'}).click();
