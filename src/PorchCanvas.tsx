@@ -70,14 +70,12 @@ function SyncedCanvas({room, profile, tool, refreshAdmission}: {
     if (!initialized) return;
     let disposed = false;
     let socket: PartySocket | null = null;
-    const connect = async () => {
-      const admission = refreshAdmission ? await refreshAdmission() : null;
-      if (disposed) return;
+    const connect = () => {
       socket = new PartySocket({
         host: partyHost(),
         party: 'canvas',
         room: roomKey,
-        query: admission ? {admission: admission.ticket} : undefined,
+        query: refreshAdmission ? async () => ({admission: (await refreshAdmission()).ticket}) : undefined,
       });
       socketRef.current = socket;
       socket.addEventListener('open', () => {
@@ -96,7 +94,7 @@ function SyncedCanvas({room, profile, tool, refreshAdmission}: {
       socket.addEventListener('close', () => { if (!disposed) setStatus('error'); });
       socket.addEventListener('error', () => { if (!disposed) setStatus('error'); });
     };
-    void connect();
+    connect();
     return () => {
       disposed = true;
       socketRef.current = null;
