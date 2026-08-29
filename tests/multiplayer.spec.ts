@@ -4,7 +4,7 @@ import AxeBuilder from '@axe-core/playwright';
 const blockRemoteMedia = (context: BrowserContext) => context.route(/(youtube(?:-nocookie)?\.com|googlevideo\.com|ytimg\.com)/, (route) => route.abort());
 
 const enterAs = async (page: Page, name: string, intention: string) => {
-  await page.getByRole('button', {name: 'Room'}).click();
+  await page.getByRole('button', {name: 'Room', exact: true}).click();
   await page.getByRole('button', {name: 'Edit your profile'}).click();
   await page.getByLabel('Name', {exact: true}).fill(name);
   await page.getByLabel('Today’s intention').fill(intention);
@@ -24,7 +24,9 @@ test('two people share an authoritative clock and merge their workspace', async 
   const second = await secondContext.newPage();
   await second.goto(`/?room=${room}`);
   await enterAs(second, 'Linus', 'Keep the clock humane');
-  await first.getByRole('button', {name: 'Room'}).click();
+  await expect(first.getByRole('button', {name: 'Open Room, 2 people in room'})).toBeVisible();
+  await expect(first.locator('.room-locus small')).toHaveText('2 in room');
+  await first.getByRole('button', {name: 'Room', exact: true}).click();
   await expect(first.getByText('2 people')).toBeVisible();
   await first.locator('.tool-dock').getByRole('button', {name: 'Focus'}).click();
   await expect(second.getByText('Ada holds the tempo')).toBeVisible();
@@ -376,6 +378,8 @@ test('one member keeps room authority across their browser tabs', async ({browse
   const second = await context.newPage();
   await second.goto(`/?room=${room}`);
   await expect(second.getByText('you hold the room tempo')).toBeVisible();
+  await expect(second.getByRole('button', {name: 'Open Room, 1 person in room'})).toBeVisible();
+  await expect(second.locator('.room-locus small')).toHaveText('1 in room');
   await first.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();
   await first.locator('.presence-choices').getByRole('button', {name: 'Ready'}).click();
   await second.locator('.tool-dock').getByRole('button', {name: 'Room', exact: true}).click();

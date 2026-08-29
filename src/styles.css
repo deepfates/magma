@@ -43,7 +43,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .camera-control { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(255,255,255,.2); border-radius: 4px; color: rgba(255,255,255,.75); background: rgba(6,8,7,.48); backdrop-filter: blur(9px); cursor: pointer; font-size: 9px; }
 .room-locus { min-width: 0; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid rgba(255,255,255,.2); border-radius: 4px; color: rgba(255,255,255,.75); background: rgba(6,8,7,.48); backdrop-filter: blur(9px); cursor: pointer; font-size: 9px; }
 .room-locus:hover { background: var(--field); }
-.room-locus > span:nth-child(2) { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-presence-symbols { max-width: 104px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: .08em; font-size: 12px; }
 .room-locus small { color: var(--ink); }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #d5a15e; }
 .status-dot.online { background: #9ed9ac; box-shadow: 0 0 7px rgba(158,217,172,.38); }
@@ -318,7 +318,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
   .instrument-header { left: 12px; right: 12px; }
   .brand h1, .camera-control span { display: none; }
   .camera-control { font-size: 0; }
-  .room-locus > span:nth-child(2) { display: none; }
+  .room-presence-symbols { display: none; }
   .clock-strip { top: 58px; }
   .tool-dock span { display: none; }
   .tool-dock { grid-template-columns: repeat(5, minmax(54px, 1fr)); width: calc(100vw - 24px); }

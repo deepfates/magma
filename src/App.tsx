@@ -214,6 +214,8 @@ function App() {
   const salonPhase = deriveSalonPhase(session.timer, session.roomNow());
   const selfPresence = session.participants.find((person) => person.memberId === session.profile.memberId)?.presence ?? 'here';
   const readyCount = session.participants.filter((person) => person.presence === 'ready').length;
+  const peopleInRoom = session.participants.length;
+  const presenceSymbols = session.participants.slice(0, 3).map((person) => person.emoji).join(' ');
 
   const applyQuietBoundary = () => {
     backdrop.setMuted(true);
@@ -402,7 +404,7 @@ function App() {
       <aside className="instrument-rail" aria-label="Magma focus instrument">
         <header className="instrument-header">
           <a className="brand" href="/" aria-label="Magma home"><Flame size={17} fill="currentColor" /><h1>magma</h1></a>
-          <div className="header-actions"><button className="camera-control" onClick={() => setPlayerMode(true)}><Maximize2 size={13} /> Camera controls</button><button className="room-locus" onClick={(event) => openSurface('room', event.currentTarget)}><span className={`status-dot ${session.connected ? 'online' : ''}`} /><span>{room}</span><small>{session.participants.length}</small></button></div>
+          <div className="header-actions"><button className="camera-control" onClick={() => setPlayerMode(true)}><Maximize2 size={13} /> Camera controls</button><button className="room-locus" aria-label={session.connected ? `Open Room, ${peopleInRoom} ${peopleInRoom === 1 ? 'person' : 'people'} in room` : 'Open Room, reconnecting'} onClick={(event) => openSurface('room', event.currentTarget)}><span className={`status-dot ${session.connected ? 'online' : ''}`} aria-hidden="true" /><span className="room-presence-symbols" aria-hidden="true">{presenceSymbols || 'Room'}</span><small>{peopleInRoom} in room</small></button></div>
         </header>
 
         <div className="clock-strip" aria-label="Shared clock summary">
