@@ -304,6 +304,8 @@ test('Floor additions stay quiet, then the Listening Deck opens once in canonica
   await ada.getByRole('button', {name: 'Set room cadence'}).click();
   await ada.locator('.tool-dock').getByRole('button', {name: 'Focus'}).click();
   await ada.getByRole('button', {name: 'Start together'}).click();
+  await expect(ada.getByRole('button', {name: 'Pause together'})).toBeVisible();
+  await expect(lin.getByRole('button', {name: 'Ask to pause'})).toBeVisible();
 
   await Promise.all([
     ada.getByRole('button', {name: 'Environment'}).click(),
@@ -345,9 +347,9 @@ test('Floor additions stay quiet, then the Listening Deck opens once in canonica
 
   await lin.reload();
   await lin.getByRole('button', {name: 'Environment'}).click();
-  const restored = await lin.locator('.deck-now, .deck-list').allTextContents();
-  expect(restored.join(' ')).toContain('ABC7 Treasure Island');
-  expect(restored.join(' ')).toContain('TrazCam Bay Life');
+  const restoredOrder = lin.locator('.deck-now, .deck-list');
+  await expect.poll(() => orderText(restoredOrder)).toContain('ABC7 Treasure Island');
+  expect(await orderText(restoredOrder)).toContain('TrazCam Bay Life');
   await expect(lin.locator('.living-window iframe')).toHaveCount(0);
   await adaContext.close();
   await linContext.close();
