@@ -154,7 +154,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .scene-option strong { color: var(--ink); font-size: 10px; font-weight: 550; }
 .scene-option small { color: var(--dim); font-size: 8px; }
 .scene-option.selected { box-shadow: inset 2px 0 var(--accent); background: #171a17; }
-.custom-scene { display: grid; grid-template-columns: 1fr 50px; gap: 6px; margin-top: 11px; }
+.scene-option:disabled, .custom-scene :disabled { cursor: not-allowed; opacity: .48; }
+.custom-scene { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px; margin-top: 11px; }
+.custom-scene button { padding-inline: 9px; }
 .backdrop-error { display: block; margin-top: 5px; color: #ef9b91; font-size: 9px; }
 .inline-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 10px; }
 .inline-controls button { display: flex; align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; font-size: 9px; }

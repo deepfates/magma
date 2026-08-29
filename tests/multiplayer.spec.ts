@@ -115,33 +115,57 @@ test('the core room is accessible and fits a phone viewport', async ({browser}) 
   await context.close();
 });
 
-test('the living view covers the viewport and offers a complete player mode', async ({page}) => {
-  await page.goto(`/?room=backdrop-${crypto.randomUUID()}`);
-  const frame = page.locator('.living-window iframe');
-  await expect(frame).toHaveAttribute('src', /BSWhGNXxT9A/);
-  const geometry = await page.evaluate(() => document.querySelector('.media-stage')!.getBoundingClientRect().toJSON());
+test('the room view converges while personal media preferences stay local', async ({browser}) => {
+  const room = `backdrop-${crypto.randomUUID()}`;
+  const hostContext = await browser.newContext();
+  const followerContext = await browser.newContext();
+  const host = await hostContext.newPage();
+  const follower = await followerContext.newPage();
+  await host.goto(`/?room=${room}`);
+  await expect(host.getByText('you hold the room tempo')).toBeVisible();
+  await follower.goto(`/?room=${room}`);
+  const hostFrame = host.locator('.living-window iframe');
+  const followerFrame = follower.locator('.living-window iframe');
+  await expect(hostFrame).toHaveAttribute('src', /BSWhGNXxT9A/);
+  await expect(followerFrame).toHaveAttribute('src', /BSWhGNXxT9A/);
+  const geometry = await host.evaluate(() => document.querySelector('.media-stage')!.getBoundingClientRect().toJSON());
   expect(geometry.left).toBe(0);
   expect(geometry.top).toBe(0);
-  expect(geometry.width).toBe(await page.evaluate(() => innerWidth));
-  expect(geometry.height).toBe(await page.evaluate(() => innerHeight));
-  await page.getByRole('button', {name: 'Camera controls'}).click();
-  await expect(page.getByRole('button', {name: 'Return to instrument'})).toBeVisible();
-  expect(await frame.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe('auto');
-  await page.getByRole('button', {name: 'Return to instrument'}).click();
-  await page.getByRole('button', {name: 'Environment'}).click();
-  await page.getByRole('button', {name: 'Quiet everything'}).click();
-  await expect(frame).toHaveCount(0);
-  await page.getByRole('button', {name: 'Open selected view'}).click();
-  await expect(frame).toHaveAttribute('src', /BSWhGNXxT9A/);
-  await page.getByLabel('YouTube video or playlist URL').fill('https://www.youtube.com/playlist?list=PL1234567890abc');
-  await page.getByRole('button', {name: 'Load'}).click();
-  await expect(frame).toHaveAttribute('src', /embed\/videoseries/);
-  await expect(frame).toHaveAttribute('src', /list=PL1234567890abc/);
-  await page.reload();
-  await expect(frame).toHaveAttribute('src', /list=PL1234567890abc/);
-  await page.getByRole('button', {name: 'Environment'}).click();
-  await page.getByRole('button', {name: 'Close live view'}).click();
-  await expect(frame).toHaveCount(0);
+  expect(geometry.width).toBe(await host.evaluate(() => innerWidth));
+  expect(geometry.height).toBe(await host.evaluate(() => innerHeight));
+
+  await follower.getByRole('button', {name: 'Environment'}).click();
+  await expect(follower.getByRole('button', {name: /ABC7 Treasure Island/})).toBeDisabled();
+  await followerFrame.evaluate((element) => { element.dataset.identity = 'retained'; });
+  await follower.getByRole('button', {name: 'Camera muted'}).click();
+  expect(await followerFrame.getAttribute('data-identity')).toBe('retained');
+
+  await host.getByRole('button', {name: 'Environment'}).click();
+  await host.getByRole('button', {name: /ABC7 Treasure Island/}).click();
+  await expect(hostFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
+  await expect(followerFrame).toHaveAttribute('src', /_VqvVJfmyfs/);
+
+  await host.getByLabel('YouTube video or playlist URL').fill('https://www.youtube.com/playlist?list=PL1234567890abc');
+  await host.getByRole('button', {name: 'Set for room'}).click();
+  await expect(hostFrame).toHaveAttribute('src', /embed\/videoseries/);
+  await expect(followerFrame).toHaveAttribute('src', /list=PL1234567890abc/);
+  expect(await host.evaluate(() => JSON.parse(localStorage.getItem('magma:youtube-backdrop:v2') ?? '{}').muted)).toBe(true);
+  expect(await follower.evaluate(() => JSON.parse(localStorage.getItem('magma:youtube-backdrop:v2') ?? '{}').muted)).toBe(false);
+  expect(await host.evaluate(() => 'source' in JSON.parse(localStorage.getItem('magma:youtube-backdrop:v2') ?? '{}'))).toBe(false);
+
+  await follower.getByRole('button', {name: 'Quiet everything'}).click();
+  await expect(followerFrame).toHaveCount(0);
+  await expect(hostFrame).toHaveAttribute('src', /list=PL1234567890abc/);
+  await follower.getByRole('button', {name: 'Open selected view'}).click();
+  await expect(followerFrame).toHaveAttribute('src', /list=PL1234567890abc/);
+  await follower.reload();
+  await expect(followerFrame).toHaveAttribute('src', /list=PL1234567890abc/);
+
+  await host.getByRole('button', {name: 'Camera controls'}).click();
+  await expect(host.getByRole('button', {name: 'Return to instrument'})).toBeVisible();
+  expect(await hostFrame.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe('auto');
+  await hostContext.close();
+  await followerContext.close();
 });
 
 test('surface drafts survive a posture change while the clock remains reachable', async ({page}) => {
@@ -153,4 +177,21 @@ test('surface drafts survive a posture change while the clock remains reachable'
   await page.locator('.tool-dock').getByRole('button', {name: 'Focus'}).click();
   await expect(page.getByRole('timer')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test('one member keeps room authority across their browser tabs', async ({browser}) => {
+  const room = `member-host-${crypto.randomUUID()}`;
+  const context = await browser.newContext();
+  const first = await context.newPage();
+  await first.goto(`/?room=${room}`);
+  await expect(first.getByText('you hold the room tempo')).toBeVisible();
+  const second = await context.newPage();
+  await second.goto(`/?room=${room}`);
+  await expect(second.getByText('you hold the room tempo')).toBeVisible();
+  await second.getByRole('button', {name: 'Start together'}).click();
+  await expect(first.getByRole('button', {name: 'Pause together'})).toBeVisible();
+  await first.close();
+  await expect(second.getByText('the room is in flow')).toBeVisible();
+  await expect(second.getByRole('button', {name: 'Pause together'})).toBeVisible();
+  await context.close();
 });

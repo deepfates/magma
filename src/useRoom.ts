@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import type PartySocket from 'partysocket';
 import {connectWorkspace} from './store';
 import {createTimer, remainingAt, type TimerCommand, type TimerDurations, type TimerState} from './domain/timer';
+import {createMediaState, type MediaCommand, type RoomMediaState} from './domain/media';
 import type {Participant, Profile, RoomSnapshot, SessionArtifact, TimerProposal} from './domain/protocol';
 
 export type Reaction = {id: string; emoji: string; from: string};
@@ -37,6 +38,8 @@ export const useRoom = (room: string) => {
   const bestRtt = useRef(Number.POSITIVE_INFINITY);
   const [connected, setConnected] = useState(false);
   const [timer, setTimer] = useState<TimerState>(createTimer());
+  const [media, setMedia] = useState<RoomMediaState>(createMediaState());
+  const [mediaReady, setMediaReady] = useState(false);
   const [serverOffset, setServerOffset] = useState(0);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [hostId, setHostId] = useState<string | null>(null);
@@ -83,6 +86,10 @@ export const useRoom = (room: string) => {
             setHostId(snapshot.hostId);
             setProposal(snapshot.proposal);
             setArtifacts(snapshot.artifacts);
+            if (snapshot.media) {
+              setMedia(snapshot.media);
+              setMediaReady(true);
+            }
             if (!Number.isFinite(bestRtt.current)) setServerOffset(snapshot.serverNow - Date.now());
           }
           if (data.type === 'clock.pong') {
@@ -134,14 +141,18 @@ export const useRoom = (room: string) => {
     });
   }, [send]);
   const updateSettings = useCallback((durations: TimerDurations, autoAdvance: boolean) => send({type: 'timer.settings', durations, autoAdvance}), [send]);
+  const mediaCommand = useCallback((command: MediaCommand) => send({type: 'media.command', command, expectedRevision: media.revision}), [media.revision, send]);
   const approve = useCallback((proposalId: string) => send({type: 'timer.approve', proposalId}), [send]);
   const dismiss = useCallback((proposalId: string) => send({type: 'timer.dismiss', proposalId}), [send]);
   const transferHost = useCallback((memberId: string) => send({type: 'host.transfer', memberId}), [send]);
   const remaining = useCallback(() => remainingAt(timer, Date.now() + serverOffset), [serverOffset, timer]);
+  const roomNow = useCallback(() => Date.now() + serverOffset, [serverOffset]);
 
   return {
     connected,
     timer,
+    media,
+    mediaReady,
     participants,
     hostId,
     isHost: hostId === profile.memberId,
@@ -153,10 +164,12 @@ export const useRoom = (room: string) => {
     reactions,
     profile,
     remaining,
+    roomNow,
     command,
     react,
     updateProfile,
     updateSettings,
+    mediaCommand,
     approve,
     dismiss,
     transferHost,

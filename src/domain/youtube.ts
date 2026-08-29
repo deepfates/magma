@@ -17,6 +17,9 @@ export const SCENE_PRESETS: Array<YouTubeSource & {description: string; accent: 
   {kind: 'video', id: 'sWasdbDVNvc', label: 'Earth from the ISS · live', description: 'Official NASA views, with occasional signal loss', accent: '#b997ff'},
 ];
 
+export const isKnownLiveSource = (source: YouTubeSource) =>
+  source.kind === 'live' || SCENE_PRESETS.some((candidate) => candidate.id === source.id);
+
 const safeId = (value: string, min = 10, max = 90) =>
   value.length >= min && value.length <= max && /^[a-zA-Z0-9_-]+$/.test(value);
 
@@ -51,6 +54,7 @@ export const youtubeEmbedUrl = (source: YouTubeSource, muted: boolean, origin: s
     controls: '1',
     playsinline: '1',
     rel: '0',
+    enablejsapi: '1',
     origin,
   });
   if (source.kind === 'live') {
@@ -61,7 +65,5 @@ export const youtubeEmbedUrl = (source: YouTubeSource, muted: boolean, origin: s
     params.set('list', source.id);
     return `https://www.youtube-nocookie.com/embed/videoseries?${params}`;
   }
-  params.set('loop', '1');
-  params.set('playlist', source.id);
   return `https://www.youtube-nocookie.com/embed/${source.id}?${params}`;
 };

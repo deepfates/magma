@@ -1,7 +1,9 @@
 import type * as Party from 'partykit/server';
 import {TinyBasePartyKitServer} from 'tinybase/persisters/persister-partykit-server';
 import {applyTimerCommand, applyTimerSettings, createTimer, normalizeTimer, settleElapsed, type TimerCommand, type TimerDurations, type TimerState} from '../src/domain/timer';
+import {applyMediaCommand, createMediaState, normalizeMediaState, type RoomMediaState} from '../src/domain/media';
 import {isClientMessage, type Participant, type Profile, type SessionArtifact, type TimerProposal} from '../src/domain/protocol';
+import {SCENE_PRESETS, type YouTubeSource} from '../src/domain/youtube';
 
 type Connection = Party.Connection<Participant>;
 
@@ -9,6 +11,7 @@ const TIMER_KEY = 'magma:timer';
 const ARTIFACTS_KEY = 'magma:artifacts';
 const PHASE_PARTICIPANTS_KEY = 'magma:phase-participants';
 const REACTION_COUNT_KEY = 'magma:reaction-count';
+const MEDIA_KEY = 'magma:media';
 const ALLOWED_TABLES = new Set(['tasks', 'sparks']);
 const ALLOWED_REACTIONS = new Set(['🔥', '✨', '🫡', '💧']);
 const ALLOWED_CELLS: Record<string, Set<string>> = {
@@ -43,7 +46,8 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   private artifacts: SessionArtifact[] = [];
   private phaseParticipants: SessionArtifact['participants'] = [];
   private reactionCount = 0;
-  private hostConnectionId: string | null = null;
+  private media: RoomMediaState = createMediaState();
+  private hostMemberId: string | null = null;
   private proposal: TimerProposal | null = null;
   private messageTimes = new Map<string, number[]>();
 
@@ -57,6 +61,8 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
     this.artifacts = (await this.room.storage.get<SessionArtifact[]>(ARTIFACTS_KEY)) ?? [];
     this.phaseParticipants = (await this.room.storage.get<SessionArtifact['participants']>(PHASE_PARTICIPANTS_KEY)) ?? [];
     this.reactionCount = (await this.room.storage.get<number>(REACTION_COUNT_KEY)) ?? 0;
+    this.media = normalizeMediaState(await this.room.storage.get<RoomMediaState>(MEDIA_KEY));
+    this.media = {...this.media, source: this.canonicalSource(this.media.source)};
     await this.settleTimer('server');
     await this.scheduleAlarm();
   }
@@ -128,11 +134,30 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
       return;
     }
 
+    if (parsed.type === 'media.command') {
+      if (!this.isHost(connection)) {
+        connection.send(JSON.stringify({type: 'notice', level: 'error', message: 'The room host controls the shared view.'}));
+        return;
+      }
+      if (parsed.expectedRevision !== this.media.revision) {
+        connection.send(JSON.stringify(this.snapshot()));
+        return;
+      }
+      const command = parsed.command.type === 'source'
+        ? {...parsed.command, source: this.canonicalSource(parsed.command.source)}
+        : parsed.command;
+      const next = applyMediaCommand(this.media, command, Date.now(), participant.memberId);
+      await this.room.storage.put(MEDIA_KEY, next);
+      this.media = next;
+      this.broadcastSnapshot();
+      return;
+    }
+
     if (parsed.type === 'host.transfer') {
       if (!this.isHost(connection)) return;
       const target = Array.from(this.room.getConnections<Participant>()).find((candidate) => candidate.state?.memberId === parsed.memberId);
       if (target) {
-        this.hostConnectionId = target.id;
+        this.hostMemberId = target.state!.memberId;
         this.proposal = null;
         this.broadcastSnapshot();
       }
@@ -180,7 +205,6 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
 
   onClose(connection: Connection) {
     this.messageTimes.delete(connection.id);
-    if (this.hostConnectionId === connection.id) this.hostConnectionId = null;
     this.ensureHost(connection.id);
     this.broadcastSnapshot();
   }
@@ -305,23 +329,29 @@ export default class MagmaRoom extends TinyBasePartyKitServer {
   }
 
   private ensureHost(excludedConnectionId?: string) {
-    const current = this.hostConnectionId && this.room.getConnection<Participant>(this.hostConnectionId);
-    if (current && current.id !== excludedConnectionId && current.state) return;
+    const connections = Array.from(this.room.getConnections<Participant>()).filter((connection) => connection.id !== excludedConnectionId && connection.state);
+    if (this.hostMemberId && connections.some((connection) => connection.state!.memberId === this.hostMemberId)) return;
     const next = Array.from(this.room.getConnections<Participant>())
       .filter((connection) => connection.id !== excludedConnectionId && connection.state)
       .sort((a, b) => a.state!.joinedAt - b.state!.joinedAt)[0];
-    this.hostConnectionId = next?.id ?? null;
+    this.hostMemberId = next?.state?.memberId ?? null;
   }
 
   private isHost(connection: Connection) {
     this.ensureHost();
-    return this.hostConnectionId === connection.id;
+    return Boolean(connection.state && this.hostMemberId === connection.state.memberId);
   }
 
   private snapshot() {
     const participants = this.uniqueParticipants();
-    const hostId = Array.from(this.room.getConnections<Participant>()).find((connection) => connection.id === this.hostConnectionId)?.state?.memberId ?? null;
-    return {type: 'snapshot' as const, serverNow: Date.now(), timer: this.timer, participants, hostId, proposal: this.proposal, artifacts: this.artifacts};
+    const hostId = this.hostMemberId;
+    return {type: 'snapshot' as const, serverNow: Date.now(), timer: this.timer, participants, hostId, proposal: this.proposal, artifacts: this.artifacts, media: this.media};
+  }
+
+  private canonicalSource(source: YouTubeSource): YouTubeSource {
+    const known = SCENE_PRESETS.find((candidate) => candidate.id === source.id && candidate.kind === source.kind);
+    if (known) return {kind: known.kind, id: known.id, label: known.label};
+    return {kind: source.kind, id: source.id, label: source.kind === 'playlist' ? 'Room playlist' : source.kind === 'live' ? 'Room live stream' : 'Room video'};
   }
 
   private broadcastSnapshot() {

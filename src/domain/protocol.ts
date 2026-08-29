@@ -1,4 +1,5 @@
 import type {PhaseCompletion, TimerCommand, TimerDurations, TimerState} from './timer';
+import type {MediaCommand, RoomMediaState} from './media';
 
 export type Profile = {
   memberId: string;
@@ -37,6 +38,7 @@ export type RoomSnapshot = {
   hostId: string | null;
   proposal: TimerProposal | null;
   artifacts: SessionArtifact[];
+  media: RoomMediaState;
 };
 
 export type ClientMessage =
@@ -45,6 +47,7 @@ export type ClientMessage =
   | {type: 'timer.approve'; proposalId: string}
   | {type: 'timer.dismiss'; proposalId: string}
   | {type: 'timer.settings'; durations: TimerDurations; autoAdvance: boolean}
+  | {type: 'media.command'; command: MediaCommand; expectedRevision: number}
   | {type: 'host.transfer'; memberId: string}
   | {type: 'reaction'; emoji: string}
   | {type: 'clock.ping'; clientSentAt: number};
@@ -72,6 +75,17 @@ export const isClientMessage = (value: unknown): value is ClientMessage => {
       return typeof message.proposalId === 'string';
     case 'timer.settings':
       return Boolean(message.durations && typeof message.durations === 'object') && typeof message.autoAdvance === 'boolean';
+    case 'media.command': {
+      if (!Number.isSafeInteger(message.expectedRevision) || Number(message.expectedRevision) < 0 || !message.command || typeof message.command !== 'object') return false;
+      const command = message.command as Record<string, unknown>;
+      if (command.type === 'source') {
+        const source = command.source as Record<string, unknown> | undefined;
+        return Boolean(source && ['live', 'video', 'playlist'].includes(String(source.kind)) && typeof source.id === 'string' && /^[a-zA-Z0-9_-]{10,90}$/.test(source.id) && typeof source.label === 'string' && source.label.length <= 80);
+      }
+      return ['play', 'pause', 'seek'].includes(String(command.type))
+        && typeof command.positionSeconds === 'number' && Number.isFinite(command.positionSeconds) && command.positionSeconds >= 0 && command.positionSeconds <= 86_400
+        && Number.isInteger(command.playlistIndex) && Number(command.playlistIndex) >= 0 && Number(command.playlistIndex) <= 10_000;
+    }
     case 'host.transfer':
       return typeof message.memberId === 'string';
     case 'reaction':
