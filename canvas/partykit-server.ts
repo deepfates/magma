@@ -6,6 +6,7 @@ import {
   TRUSTED_ROLE_HEADER,
   validateAdmissionBeforeConnect,
 } from '../party/access';
+import {CanvasPresenceIndex, parseCanvasPresenceClientMessage} from '../src/canvasPresence';
 
 const SNAPSHOT_KEY = 'porch:excalidraw-yjs:v1';
 const DEFAULT_ALLOWED_ORIGINS = ['https://magma-one-azure.vercel.app', 'http://localhost:5173', 'http://127.0.0.1:5173'];
@@ -55,6 +56,7 @@ export default class PorchCanvasRoom implements Party.Server {
   }
 
   private readonly document = new Y.Doc();
+  private readonly presence = new CanvasPresenceIndex();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(readonly room: Party.Room) {}
@@ -64,14 +66,30 @@ export default class PorchCanvasRoom implements Party.Server {
     if (snapshot?.byteLength) Y.applyUpdateV2(this.document, snapshot, 'storage');
   }
 
-  onConnect(connection: Party.Connection) {
+  onConnect(connection: Party.Connection<{trustedMemberId: string | null}>, context: Party.ConnectionContext) {
+    connection.setState({trustedMemberId: context.request.headers.get(TRUSTED_MEMBER_HEADER)});
     connection.send(encodeUpdate(Y.encodeStateAsUpdateV2(this.document)));
+    connection.send(JSON.stringify({type: 'presence.snapshot', presences: this.presence.snapshot()}));
   }
 
-  onMessage(message: string | ArrayBuffer | ArrayBufferView, connection: Party.Connection) {
+  onMessage(message: string | ArrayBuffer | ArrayBufferView, connection: Party.Connection<{trustedMemberId: string | null}>) {
     if (typeof message !== 'string' || message.length > 6_800_000) return;
     try {
-      const update = decodeUpdate(JSON.parse(message));
+      const parsed = JSON.parse(message) as unknown;
+      const presenceMessage = parseCanvasPresenceClientMessage(parsed);
+      if (presenceMessage?.type === 'presence.hello') {
+        const presence = this.presence.identify(connection.id, presenceMessage.profile, connection.state?.trustedMemberId);
+        if (presence) this.room.broadcast(JSON.stringify({type: 'presence.state', presence}));
+        return;
+      }
+      if (presenceMessage?.type === 'presence.update') {
+        const {type: _type, ...update} = presenceMessage;
+        const presence = this.presence.update(connection.id, update, Date.now());
+        if (presence) this.room.broadcast(JSON.stringify({type: 'presence.state', presence}));
+        return;
+      }
+      if (parsed && typeof parsed === 'object' && String((parsed as {type?: unknown}).type).startsWith('presence.')) return;
+      const update = decodeUpdate(parsed);
       if (!update || update.byteLength > 5_000_000) return;
       Y.applyUpdateV2(this.document, update, connection.id);
       this.room.broadcast(message, [connection.id]);
@@ -81,7 +99,11 @@ export default class PorchCanvasRoom implements Party.Server {
     }
   }
 
-  onClose() { void this.persist(); }
+  onClose(connection: Party.Connection) {
+    const memberId = this.presence.leave(connection.id);
+    if (memberId) this.room.broadcast(JSON.stringify({type: 'presence.leave', memberId}));
+    void this.persist();
+  }
 
   private schedulePersist() {
     if (this.persistTimer) clearTimeout(this.persistTimer);
