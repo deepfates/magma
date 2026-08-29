@@ -172,6 +172,8 @@ test('two people can prepare a Block and keep talking while the shared clock run
   await expect(second.getByText('Draft the opening', {exact: true})).toBeVisible();
   await second.getByRole('button', {name: 'Close Block'}).click();
   await second.getByRole('button', {name: 'Talk', exact: true}).click();
+  await expect(second.getByRole('region', {name: 'Room conversation'})).toContainText('Focus');
+  await expect(second.getByRole('region', {name: 'Room conversation'})).toContainText('Conversation stays open.');
   await second.getByLabel('Write to the room').fill('I am here with you');
   await second.getByRole('button', {name: 'Send', exact: true}).click();
   await first.getByRole('button', {name: /2 here/}).click();

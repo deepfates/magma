@@ -156,7 +156,7 @@ export default function App() {
       {peopleOpen && <aside className="porch-sidecar" aria-label="People and conversation">
         <div className="sidecar-heading"><div><small>ON THE PORCH</small><h2>{session.participants.length} {session.participants.length === 1 ? 'person' : 'people'}</h2></div><button onClick={() => setPeopleOpen(false)} aria-label="Close people"><X size={18} /></button></div>
         <div className="porch-people">{session.participants.map((person) => <div key={person.memberId}><span style={{'--person-color': person.color} as React.CSSProperties}>{person.emoji}</span><p><strong>{person.name}{person.memberId === session.profile.memberId ? ' · you' : ''}</strong><small>{session.block.plans[person.memberId]?.task || person.intention || 'here now'}</small></p></div>)}</div>
-        <Porch messages={session.porchMessages} floor={false} connected={session.connected} release={session.socialRelease} onSend={session.sendPorchMessage} />
+        <Porch messages={session.porchMessages} focusActive={session.timer.mode === 'focus' && session.timer.status === 'running'} connected={session.connected} release={session.socialRelease} onSend={session.sendPorchMessage} />
         {invitationPayload && <label className="porch-share-copy">Invite<textarea readOnly value={invitationPayload} onFocus={(event) => event.currentTarget.select()} /></label>}
       </aside>}
 
